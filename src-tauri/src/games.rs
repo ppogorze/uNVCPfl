@@ -1,6 +1,7 @@
 use regex::Regex;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
 use walkdir::WalkDir;
@@ -10,6 +11,7 @@ pub enum GameSource {
     Steam,
     Lutris,
     Heroic,
+    Faugus,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -27,16 +29,55 @@ pub struct GameDetector;
 impl GameDetector {
     pub fn detect_all_games() -> Vec<Game> {
         let mut games = Vec::new();
+        let mut seen_steam_ids: HashSet<String> = HashSet::new();
 
-        games.extend(Self::detect_steam_games());
-        games.extend(Self::detect_lutris_games());
-        games.extend(Self::detect_heroic_games());
+        // Steam games - deduplicate by appid
+        for game in Self::detect_steam_games() {
+            if !seen_steam_ids.contains(&game.id) {
+                seen_steam_ids.insert(game.id.clone());
+                games.push(game);
+            }
+        }
+
+        // Other sources - deduplicate by name
+        let mut seen_names: HashSet<String> = HashSet::new();
+        for game in &games {
+            seen_names.insert(game.name.to_lowercase());
+        }
+
+        for game in Self::detect_lutris_games() {
+            let lower = game.name.to_lowercase();
+            if !seen_names.contains(&lower) {
+                seen_names.insert(lower);
+                games.push(game);
+            }
+        }
+
+        for game in Self::detect_heroic_games() {
+            let lower = game.name.to_lowercase();
+            if !seen_names.contains(&lower) {
+                seen_names.insert(lower);
+                games.push(game);
+            }
+        }
+
+        for game in Self::detect_faugus_games() {
+            let lower = game.name.to_lowercase();
+            if !seen_names.contains(&lower) {
+                seen_names.insert(lower);
+                games.push(game);
+            }
+        }
+
+        // Sort alphabetically
+        games.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
 
         games
     }
 
     pub fn detect_steam_games() -> Vec<Game> {
         let mut games = Vec::new();
+        let mut seen_appids: HashSet<String> = HashSet::new();
 
         // Find Steam library folders
         let steam_paths = Self::get_steam_library_paths();
@@ -52,7 +93,11 @@ impl GameDetector {
                 let path = entry.path();
                 if path.extension().map(|e| e == "acf").unwrap_or(false) {
                     if let Some(game) = Self::parse_acf_file(&path, &steamapps) {
-                        games.push(game);
+                        // Deduplicate by appid
+                        if !seen_appids.contains(&game.id) {
+                            seen_appids.insert(game.id.clone());
+                            games.push(game);
+                        }
                     }
                 }
             }
@@ -63,28 +108,50 @@ impl GameDetector {
 
     fn get_steam_library_paths() -> Vec<PathBuf> {
         let mut paths = Vec::new();
+        let mut seen_canonicalized: HashSet<PathBuf> = HashSet::new();
 
         // Default Steam paths
         if let Some(home) = dirs::home_dir() {
             let default_steam = home.join(".steam").join("steam");
             if default_steam.exists() {
-                paths.push(default_steam.clone());
+                // Canonicalize to resolve symlinks
+                if let Ok(canonical) = fs::canonicalize(&default_steam) {
+                    if !seen_canonicalized.contains(&canonical) {
+                        seen_canonicalized.insert(canonical.clone());
+                        paths.push(canonical);
+                    }
+                }
             }
 
             let alt_steam = home.join(".local").join("share").join("Steam");
-            if alt_steam.exists() && !paths.contains(&alt_steam) {
-                paths.push(alt_steam);
+            if alt_steam.exists() {
+                if let Ok(canonical) = fs::canonicalize(&alt_steam) {
+                    if !seen_canonicalized.contains(&canonical) {
+                        seen_canonicalized.insert(canonical.clone());
+                        paths.push(canonical);
+                    }
+                }
             }
 
             // Parse libraryfolders.vdf for additional libraries
-            let libfolders = default_steam.join("steamapps").join("libraryfolders.vdf");
-            if libfolders.exists() {
-                if let Ok(content) = fs::read_to_string(&libfolders) {
+            let libfolders_path = if let Some(first) = paths.first() {
+                first.join("steamapps").join("libraryfolders.vdf")
+            } else {
+                default_steam.join("steamapps").join("libraryfolders.vdf")
+            };
+
+            if libfolders_path.exists() {
+                if let Ok(content) = fs::read_to_string(&libfolders_path) {
                     let path_regex = Regex::new(r#""path"\s+"([^"]+)""#).unwrap();
                     for cap in path_regex.captures_iter(&content) {
                         let lib_path = PathBuf::from(&cap[1]);
-                        if lib_path.exists() && !paths.contains(&lib_path) {
-                            paths.push(lib_path);
+                        if lib_path.exists() {
+                            if let Ok(canonical) = fs::canonicalize(&lib_path) {
+                                if !seen_canonicalized.contains(&canonical) {
+                                    seen_canonicalized.insert(canonical.clone());
+                                    paths.push(canonical);
+                                }
+                            }
                         }
                     }
                 }
@@ -110,7 +177,7 @@ impl GameDetector {
         Some(Game {
             id: appid.clone(),
             name,
-            executable: None, // Would need to scan for .exe files
+            executable: None,
             source: GameSource::Steam,
             install_path: Some(install_path),
             icon_url: Some(format!(
@@ -237,5 +304,97 @@ impl GameDetector {
         }
 
         games
+    }
+
+    pub fn detect_faugus_games() -> Vec<Game> {
+        let mut games = Vec::new();
+
+        if let Some(data_dir) = dirs::data_dir() {
+            let applications_dir = data_dir.join("applications");
+
+            if applications_dir.exists() {
+                // Look for Faugus launcher .desktop files
+                for entry in fs::read_dir(&applications_dir)
+                    .into_iter()
+                    .flatten()
+                    .flatten()
+                {
+                    let path = entry.path();
+                    if path.extension().map(|e| e == "desktop").unwrap_or(false) {
+                        if let Ok(content) = fs::read_to_string(&path) {
+                            // Check if it's a Faugus launcher shortcut
+                            if content.contains("faugus-launcher") || content.contains("umu-run") {
+                                if let Some(game) = Self::parse_desktop_file(&content, &path) {
+                                    games.push(game);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Also check ~/Faugus/ directory for prefixes
+        if let Some(home) = dirs::home_dir() {
+            let faugus_dir = home.join("Faugus");
+            if faugus_dir.exists() {
+                for entry in fs::read_dir(&faugus_dir).into_iter().flatten().flatten() {
+                    let path = entry.path();
+                    if path.is_dir() {
+                        let name = path
+                            .file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("Unknown")
+                            .to_string();
+
+                        // Skip if it looks like a system folder
+                        if name.starts_with('.') {
+                            continue;
+                        }
+
+                        games.push(Game {
+                            id: format!("faugus-{}", name.to_lowercase().replace(' ', "-")),
+                            name,
+                            executable: None,
+                            source: GameSource::Faugus,
+                            install_path: Some(path),
+                            icon_url: None,
+                        });
+                    }
+                }
+            }
+        }
+
+        games
+    }
+
+    fn parse_desktop_file(content: &str, path: &PathBuf) -> Option<Game> {
+        let name_regex = Regex::new(r"(?m)^Name=(.+)$").ok()?;
+        let name = name_regex
+            .captures(content)?
+            .get(1)?
+            .as_str()
+            .trim()
+            .to_string();
+
+        // Skip if name is empty or looks like a system app
+        if name.is_empty() || name.starts_with("faugus") {
+            return None;
+        }
+
+        let id = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown")
+            .to_string();
+
+        Some(Game {
+            id,
+            name,
+            executable: None,
+            source: GameSource::Faugus,
+            install_path: None,
+            icon_url: None,
+        })
     }
 }

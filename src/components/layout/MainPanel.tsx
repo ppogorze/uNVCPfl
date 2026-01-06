@@ -1,19 +1,15 @@
-import { useState, useEffect } from "react";
-import { Game, GameProfile, getProfile, saveProfile, listProfiles } from "@/lib/api";
+import { useState, useEffect, useMemo } from "react";
+import { Game, GameProfile, getProfile, saveProfile, buildEnvVars, buildWrapperCmd, isLactAvailable, getLactProfiles } from "@/lib/api";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Save, RotateCcw, Cpu, Layers, Sparkles, Monitor, Gamepad2 } from "lucide-react";
-
-interface MainPanelProps {
-    selectedGame: Game | null;
-}
+import { Save, RotateCcw, Cpu, Layers, Sparkles, Monitor, Gamepad2, Copy, Check, Terminal, Gpu, Zap } from "lucide-react";
 
 // Default profile structure
 const createDefaultProfile = (game: Game | null): GameProfile => ({
-    name: game?.name || "Global Profile",
+    name: game?.name || "Global Settings",
     executable_match: game?.executable || null,
     steam_appid: game?.source === "Steam" ? parseInt(game.id) : null,
     dlss: {
@@ -37,15 +33,19 @@ const createDefaultProfile = (game: Game | null): GameProfile => ({
         skip_cleanup: true,
         vsync: null,
         triple_buffer: false,
+        prime: false,
+        smooth_motion: false,
     },
     proton: {
         verb: "waitforexitandrun",
         esync: true,
         fsync: true,
+        enable_wayland: false,
     },
     wrappers: {
         mangohud: false,
         gamemode: false,
+        game_performance: false,
         dlss_swapper: false,
         gamescope: {
             enabled: false,
@@ -62,19 +62,231 @@ const createDefaultProfile = (game: Game | null): GameProfile => ({
             mangoapp: false,
             hdr: false,
         },
+        lact_profile: null,
     },
     custom_env: {},
     custom_args: null,
 });
 
-export function MainPanel({ selectedGame }: MainPanelProps) {
+// LACT Profile Section Component
+function LactProfileSection({
+    profile,
+    setProfile,
+    setHasChanges
+}: {
+    profile: GameProfile;
+    setProfile: React.Dispatch<React.SetStateAction<GameProfile>>;
+    setHasChanges: React.Dispatch<React.SetStateAction<boolean>>;
+}) {
+    const [lactAvailable, setLactAvailable] = useState(false);
+    const [lactProfiles, setLactProfiles] = useState<string[]>([]);
+
+    useEffect(() => {
+        isLactAvailable().then(setLactAvailable).catch(() => setLactAvailable(false));
+        getLactProfiles().then(setLactProfiles).catch(() => setLactProfiles([]));
+    }, []);
+
+    if (!lactAvailable) {
+        return null;
+    }
+
+    return (
+        <div className="bg-card border border-nvidia/30 p-4 mb-6">
+            <div className="flex items-center gap-2 mb-3">
+                <Gpu className="w-4 h-4 text-nvidia" />
+                <span className="text-sm font-medium">LACT GPU Profile</span>
+            </div>
+            <div className="flex items-center justify-between">
+                <div>
+                    <div className="text-sm font-medium">Apply LACT Profile</div>
+                    <div className="text-xs text-muted-foreground">Switch to a specific LACT GPU profile when launching</div>
+                </div>
+                <Select
+                    value={profile.wrappers.lact_profile || "none"}
+                    onValueChange={(v) => {
+                        setProfile((prev) => ({
+                            ...prev,
+                            wrappers: { ...prev.wrappers, lact_profile: v === "none" ? null : v },
+                        }));
+                        setHasChanges(true);
+                    }}
+                >
+                    <SelectTrigger className="w-48">
+                        <SelectValue placeholder="None" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="none">None</SelectItem>
+                        {lactProfiles.map((p) => (
+                            <SelectItem key={p} value={p}>{p}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            </div>
+        </div>
+    );
+}
+
+// Launch Preview Component
+function LaunchPreview({ profile, isSteamGame }: { profile: GameProfile; isSteamGame: boolean }) {
+    const [envVars, setEnvVars] = useState<Record<string, string>>({});
+    const [wrappers, setWrappers] = useState<string[]>([]);
+    const [copiedFull, setCopiedFull] = useState(false);
+    const [copiedSimple, setCopiedSimple] = useState(false);
+
+    useEffect(() => {
+        // Build env vars and wrappers from profile
+        buildEnvVars(profile).then(setEnvVars).catch(() => setEnvVars({}));
+        buildWrapperCmd(profile).then(setWrappers).catch(() => setWrappers([]));
+    }, [profile]);
+
+    const steamLaunchCommand = useMemo(() => {
+        const envString = Object.entries(envVars)
+            .map(([k, v]) => `${k}=${v}`)
+            .join(" ");
+        const wrapperString = wrappers.join(" ");
+
+        let cmd = "";
+        if (envString) cmd += envString + " ";
+        if (wrapperString) cmd += wrapperString + " ";
+        cmd += "%command%";
+
+        return cmd;
+    }, [envVars, wrappers]);
+
+    const simpleCommand = `unvcpfl --profile "${profile.name}" %command%`;
+
+    const handleCopyFull = async () => {
+        try {
+            await navigator.clipboard.writeText(steamLaunchCommand);
+            setCopiedFull(true);
+            setTimeout(() => setCopiedFull(false), 2000);
+        } catch (e) {
+            console.error("Failed to copy:", e);
+        }
+    };
+
+    const handleCopySimple = async () => {
+        try {
+            await navigator.clipboard.writeText(simpleCommand);
+            setCopiedSimple(true);
+            setTimeout(() => setCopiedSimple(false), 2000);
+        } catch (e) {
+            console.error("Failed to copy:", e);
+        }
+    };
+
+    const hasEnvVars = Object.keys(envVars).length > 0;
+    const hasWrappers = wrappers.length > 0;
+
+    if (!hasEnvVars && !hasWrappers) {
+        return (
+            <div className="bg-card border border-border p-4 mb-6">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                    <Terminal className="w-4 h-4" />
+                    <span className="text-sm">No custom launch options configured</span>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="bg-card border border-border p-4 mb-6">
+            <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                    <Terminal className="w-4 h-4 text-nvidia" />
+                    <span className="text-sm font-medium">Launch Configuration</span>
+                </div>
+                {isSteamGame && (
+                    <div className="flex gap-2">
+                        <Button variant="outline" size="sm" onClick={handleCopySimple} className="h-7 text-xs">
+                            {copiedSimple ? (
+                                <>
+                                    <Check className="w-3 h-3 mr-1 text-nvidia" />
+                                    Copied!
+                                </>
+                            ) : (
+                                <>
+                                    <Copy className="w-3 h-3 mr-1" />
+                                    Copy unvcpfl
+                                </>
+                            )}
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={handleCopyFull} className="h-7 text-xs">
+                            {copiedFull ? (
+                                <>
+                                    <Check className="w-3 h-3 mr-1 text-nvidia" />
+                                    Copied!
+                                </>
+                            ) : (
+                                <>
+                                    <Copy className="w-3 h-3 mr-1" />
+                                    Copy Full Command
+                                </>
+                            )}
+                        </Button>
+                    </div>
+                )}
+            </div>
+
+            {/* Environment Variables */}
+            {hasEnvVars && (
+                <div className="mb-3">
+                    <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Environment Variables</div>
+                    <div className="bg-background p-2 font-mono text-xs space-y-0.5 max-h-24 overflow-y-auto">
+                        {Object.entries(envVars).map(([key, value]) => (
+                            <div key={key}>
+                                <span className="text-nvidia">{key}</span>
+                                <span className="text-muted-foreground">=</span>
+                                <span className="text-foreground">{value}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Wrappers */}
+            {hasWrappers && (
+                <div className="mb-3">
+                    <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Wrappers</div>
+                    <div className="bg-background p-2 font-mono text-xs">
+                        <span className="text-nvidia">{wrappers.join(" ")}</span>
+                    </div>
+                </div>
+            )}
+
+            {/* Steam Launch Commands */}
+            {isSteamGame && (
+                <>
+                    <div className="mb-3">
+                        <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Simple (uses wrapper script)</div>
+                        <div className="bg-background p-2 font-mono text-xs break-all select-all">
+                            {simpleCommand}
+                        </div>
+                    </div>
+                    <div>
+                        <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Full Command (standalone)</div>
+                        <div className="bg-background p-2 font-mono text-xs break-all select-all">
+                            {steamLaunchCommand}
+                        </div>
+                    </div>
+                </>
+            )}
+        </div>
+    );
+}
+
+interface MainPanelProps {
+    selectedGame: Game | null;
+    onProfileSaved?: () => void;
+}
+
+export function MainPanel({ selectedGame, onProfileSaved }: MainPanelProps) {
     const [profile, setProfile] = useState<GameProfile>(createDefaultProfile(selectedGame));
     const [hasChanges, setHasChanges] = useState(false);
     const [saving, setSaving] = useState(false);
 
     useEffect(() => {
         if (selectedGame) {
-            // Try to load existing profile
             getProfile(selectedGame.name).then((existing) => {
                 if (existing) {
                     setProfile(existing);
@@ -88,11 +300,6 @@ export function MainPanel({ selectedGame }: MainPanelProps) {
             setHasChanges(false);
         }
     }, [selectedGame]);
-
-    const updateProfile = <K extends keyof GameProfile>(key: K, value: GameProfile[K]) => {
-        setProfile((prev) => ({ ...prev, [key]: value }));
-        setHasChanges(true);
-    };
 
     const updateNested = <P extends keyof GameProfile, K extends keyof GameProfile[P]>(
         parent: P,
@@ -111,6 +318,7 @@ export function MainPanel({ selectedGame }: MainPanelProps) {
         try {
             await saveProfile(profile);
             setHasChanges(false);
+            onProfileSaved?.();  // Notify parent to refresh sidebar
         } catch (e) {
             console.error("Failed to save profile:", e);
         } finally {
@@ -129,12 +337,12 @@ export function MainPanel({ selectedGame }: MainPanelProps) {
             <div className="p-4 border-b border-border flex items-center justify-between">
                 <div>
                     <h1 className="text-lg font-semibold">
-                        {selectedGame?.name || "Global Profile"}
+                        {selectedGame?.name || "Global Settings"}
                     </h1>
                     <p className="text-sm text-muted-foreground">
                         {selectedGame
                             ? `Configure settings for ${selectedGame.source} game`
-                            : "Default settings for all games"}
+                            : "Default settings applied to all games without custom profiles"}
                     </p>
                 </div>
                 <div className="flex gap-2">
@@ -152,6 +360,37 @@ export function MainPanel({ selectedGame }: MainPanelProps) {
             {/* Settings */}
             <ScrollArea className="flex-1">
                 <div className="p-6 space-y-8">
+                    {/* Launch Preview */}
+                    <LaunchPreview profile={profile} isSteamGame={selectedGame?.source === "Steam"} />
+
+                    {/* LACT GPU Profile (if available) */}
+                    <LactProfileSection profile={profile} setProfile={setProfile} setHasChanges={setHasChanges} />
+
+                    {/* NVIDIA GPU Settings */}
+                    <SettingsSection title="NVIDIA GPU" icon={<Zap className="w-4 h-4" />}>
+                        <SettingRow
+                            label="NVIDIA Prime"
+                            description="Force discrete GPU on hybrid systems (laptop)"
+                        >
+                            <Switch
+                                checked={profile.nvidia.prime}
+                                onCheckedChange={(v) => updateNested("nvidia", "prime", v)}
+                            />
+                        </SettingRow>
+
+                        <SettingRow
+                            label="Smooth Motion (RTX 40/50)"
+                            description="Frame generation on supported RTX cards"
+                        >
+                            <Switch
+                                checked={profile.nvidia.smooth_motion}
+                                onCheckedChange={(v) => updateNested("nvidia", "smooth_motion", v)}
+                            />
+                        </SettingRow>
+                    </SettingsSection>
+
+                    <Separator />
+
                     {/* Frame Synchronization */}
                     <SettingsSection title="Frame Synchronization" icon={<Monitor className="w-4 h-4" />}>
                         <SettingRow
@@ -240,6 +479,13 @@ export function MainPanel({ selectedGame }: MainPanelProps) {
                                 onCheckedChange={(v) => updateNested("proton", "fsync", v)}
                             />
                         </SettingRow>
+
+                        <SettingRow label="Proton Wayland" description="Enable Wayland support in Proton">
+                            <Switch
+                                checked={profile.proton.enable_wayland}
+                                onCheckedChange={(v) => updateNested("proton", "enable_wayland", v)}
+                            />
+                        </SettingRow>
                     </SettingsSection>
 
                     <Separator />
@@ -301,6 +547,13 @@ export function MainPanel({ selectedGame }: MainPanelProps) {
                             <Switch
                                 checked={profile.wrappers.gamemode}
                                 onCheckedChange={(v) => updateNested("wrappers", "gamemode", v)}
+                            />
+                        </SettingRow>
+
+                        <SettingRow label="Game Performance (CachyOS)" description="CachyOS game-performance scheduler">
+                            <Switch
+                                checked={profile.wrappers.game_performance}
+                                onCheckedChange={(v) => updateNested("wrappers", "game_performance", v)}
                             />
                         </SettingRow>
 

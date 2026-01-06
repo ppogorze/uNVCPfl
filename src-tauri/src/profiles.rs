@@ -40,6 +40,10 @@ pub struct NvidiaSettings {
     pub vsync: Option<String>,
     #[serde(default)]
     pub triple_buffer: bool,
+    #[serde(default)]
+    pub prime: bool,
+    #[serde(default)]
+    pub smooth_motion: bool, // RTX 40/50 only - NVPRESENT_ENABLE_SMOOTH_MOTION
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -49,6 +53,8 @@ pub struct ProtonSettings {
     pub esync: bool,
     #[serde(default = "default_true")]
     pub fsync: bool,
+    #[serde(default)]
+    pub enable_wayland: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -81,9 +87,12 @@ pub struct WrapperSettings {
     #[serde(default)]
     pub gamemode: bool,
     #[serde(default)]
+    pub game_performance: bool, // CachyOS game-performance
+    #[serde(default)]
     pub dlss_swapper: bool,
     #[serde(default)]
     pub gamescope: GamescopeSettings,
+    pub lact_profile: Option<String>, // LACT GPU profile name
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -270,6 +279,23 @@ impl ProfileManager {
             let val = if vsync == "on" { "1" } else { "0" };
             env.insert("__GL_SYNC_TO_VBLANK".to_string(), val.to_string());
         }
+        if profile.nvidia.prime {
+            env.insert("__NV_PRIME_RENDER_OFFLOAD".to_string(), "1".to_string());
+            env.insert(
+                "__VK_LAYER_NV_optimus".to_string(),
+                "NVIDIA_only".to_string(),
+            );
+            env.insert(
+                "__GLX_VENDOR_LIBRARY_NAME".to_string(),
+                "nvidia".to_string(),
+            );
+        }
+        if profile.nvidia.smooth_motion {
+            env.insert(
+                "NVPRESENT_ENABLE_SMOOTH_MOTION".to_string(),
+                "1".to_string(),
+            );
+        }
 
         // Proton settings
         if let Some(verb) = &profile.proton.verb {
@@ -280,6 +306,9 @@ impl ProfileManager {
         }
         if !profile.proton.fsync {
             env.insert("PROTON_NO_FSYNC".to_string(), "1".to_string());
+        }
+        if profile.proton.enable_wayland {
+            env.insert("PROTON_ENABLE_WAYLAND".to_string(), "1".to_string());
         }
 
         // Custom environment variables
@@ -355,10 +384,56 @@ impl ProfileManager {
             wrappers.push("gamemoderun".to_string());
         }
 
+        if profile.wrappers.game_performance {
+            wrappers.push("game-performance".to_string());
+        }
+
         if profile.wrappers.dlss_swapper {
             wrappers.push("dlss-swapper".to_string());
         }
 
+        // LACT profile switch (prepend as a command)
+        if let Some(lact_profile) = &profile.wrappers.lact_profile {
+            // Insert at beginning: lact profile switch "name" &&
+            wrappers.insert(0, format!("lact profile switch \"{}\" &&", lact_profile));
+        }
+
         wrappers
     }
+}
+
+/// Check if LACT is installed
+pub fn is_lact_available() -> bool {
+    std::process::Command::new("which")
+        .arg("lact")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// Get available LACT profiles
+pub fn get_lact_profiles() -> Vec<String> {
+    if !is_lact_available() {
+        return Vec::new();
+    }
+
+    // LACT uses `lact cli profile list` command
+    std::process::Command::new("lact")
+        .args(["cli", "profile", "list"])
+        .output()
+        .ok()
+        .and_then(|output| {
+            if output.status.success() {
+                String::from_utf8(output.stdout).ok()
+            } else {
+                None
+            }
+        })
+        .map(|s| {
+            s.lines()
+                .map(|l| l.trim().to_string())
+                .filter(|l| !l.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
 }

@@ -14,7 +14,7 @@ export interface GpuInfo {
     fan_speed: number | null;
 }
 
-export type GameSource = "Steam" | "Lutris" | "Heroic";
+export type GameSource = "Steam" | "Lutris" | "Heroic" | "Faugus";
 
 export interface Game {
     id: string;
@@ -49,12 +49,15 @@ export interface NvidiaSettings {
     skip_cleanup: boolean;
     vsync: string | null;
     triple_buffer: boolean;
+    prime: boolean;
+    smooth_motion: boolean;
 }
 
 export interface ProtonSettings {
     verb: string | null;
     esync: boolean;
     fsync: boolean;
+    enable_wayland: boolean;
 }
 
 export interface GamescopeSettings {
@@ -76,8 +79,10 @@ export interface GamescopeSettings {
 export interface WrapperSettings {
     mangohud: boolean;
     gamemode: boolean;
+    game_performance: boolean;
     dlss_swapper: boolean;
     gamescope: GamescopeSettings;
+    lact_profile: string | null;
 }
 
 export interface GameProfile {
@@ -147,6 +152,15 @@ export async function buildEnvVars(profile: GameProfile): Promise<Record<string,
 
 export async function buildWrapperCmd(profile: GameProfile): Promise<string[]> {
     return invoke<string[]>("build_wrapper_cmd", { profile });
+}
+
+// LACT Integration
+export async function isLactAvailable(): Promise<boolean> {
+    return invoke<boolean>("is_lact_available");
+}
+
+export async function getLactProfiles(): Promise<string[]> {
+    return invoke<string[]>("get_lact_profiles");
 }
 
 // Utility functions

@@ -31,17 +31,12 @@ impl GpuMonitor {
 
     pub fn get_info(&self) -> Result<GpuInfo, nvml_wrapper::error::NvmlError> {
         let device = self.nvml.device_by_index(0)?;
-        
+
         let name = device.name().unwrap_or_else(|_| "Unknown GPU".to_string());
-        let temperature = device
-            .temperature(TemperatureSensor::Gpu)
-            .unwrap_or(0);
+        let temperature = device.temperature(TemperatureSensor::Gpu).unwrap_or(0);
         let power_draw = device.power_usage().unwrap_or(0) as f32 / 1000.0; // mW to W
         let power_limit = device.power_management_limit().unwrap_or(0) as f32 / 1000.0;
-        let utilization = device
-            .utilization_rates()
-            .map(|u| u.gpu)
-            .unwrap_or(0);
+        let utilization = device.utilization_rates().map(|u| u.gpu).unwrap_or(0);
         let memory_info = device.memory_info().ok();
         let memory_used = memory_info.as_ref().map(|m| m.used).unwrap_or(0);
         let memory_total = memory_info.as_ref().map(|m| m.total).unwrap_or(0);
@@ -74,16 +69,12 @@ impl GpuMonitor {
 // Global GPU monitor state
 pub struct GpuMonitorState {
     pub monitor: Option<GpuMonitor>,
-    pub last_info: Option<GpuInfo>,
 }
 
 impl GpuMonitorState {
     pub fn new() -> Self {
         let monitor = GpuMonitor::new().ok();
-        Self {
-            monitor,
-            last_info: None,
-        }
+        Self { monitor }
     }
 }
 

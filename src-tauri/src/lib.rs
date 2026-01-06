@@ -92,6 +92,16 @@ fn build_wrapper_cmd(state: State<'_, Arc<ProfileManager>>, profile: GameProfile
     state.build_wrapper_cmd(&profile)
 }
 
+#[tauri::command]
+fn is_lact_available() -> bool {
+    profiles::is_lact_available()
+}
+
+#[tauri::command]
+fn get_lact_profiles() -> Vec<String> {
+    profiles::get_lact_profiles()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let gpu_state = create_gpu_state();
@@ -118,7 +128,11 @@ pub fn run() {
             delete_profile,
             build_env_vars,
             build_wrapper_cmd,
+            // LACT integration
+            is_lact_available,
+            get_lact_profiles,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
