@@ -1,0 +1,112 @@
+#!/bin/bash
+# unvcpfl - unofficial NVIDIA Control Panel for Linux wrapper
+# Usage: unvcpfl [--profile "Name"] %command%
+
+set -e
+
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/unvcpfl"
+PROFILES_DIR="$CONFIG_DIR/profiles"
+CLI_CMD="unvcpfl-cli"
+
+# Parse arguments
+PROFILE_NAME=""
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --profile)
+            PROFILE_NAME="$2"
+            shift 2
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+
+# Get the command to execute
+COMMAND=("$@")
+if [[ ${#COMMAND[@]} -eq 0 ]]; then
+    echo "Usage: unvcpfl [--profile \"Name\"] %command%"
+    exit 1
+fi
+
+EXE_PATH="${COMMAND[0]}"
+EXE_NAME=$(basename "$EXE_PATH")
+
+# Find matching profile
+PROFILE_FILE=""
+if [[ -n "$PROFILE_NAME" ]]; then
+    # Explicit profile name
+    SAFE_NAME=$(echo "$PROFILE_NAME" | tr ' ' '_' | tr '[:upper:]' '[:lower:]')
+    PROFILE_FILE="$PROFILES_DIR/${SAFE_NAME}.toml"
+else
+    # Auto-detect by executable name
+    if [[ -d "$PROFILES_DIR" ]]; then
+        PROFILE_FILE=$(grep -rl "executable_match = \"$EXE_NAME\"" "$PROFILES_DIR"/*.toml 2>/dev/null | head -1 || true)
+    fi
+fi
+
+# Apply profile if found
+if [[ -f "$PROFILE_FILE" ]]; then
+    echo "[unvcpfl] Loading profile: $PROFILE_FILE" >&2
+    
+    # Check if CLI helper exists
+    if command -v "$CLI_CMD" &> /dev/null; then
+        # Use the Rust CLI helper for reliable TOML parsing
+        eval "$($CLI_CMD env "$PROFILE_FILE")"
+        WRAPPER_CMD=$($CLI_CMD wrappers "$PROFILE_FILE")
+        
+        if [[ -n "$WRAPPER_CMD" ]]; then
+            echo "[unvcpfl] Wrappers: $WRAPPER_CMD" >&2
+            exec $WRAPPER_CMD "${COMMAND[@]}"
+        fi
+    else
+        # Fallback: Basic TOML parsing with grep/sed
+        echo "[unvcpfl] CLI helper not found, using basic parsing" >&2
+        
+        # DLSS settings
+        if grep -q 'upgrade = true' "$PROFILE_FILE" 2>/dev/null; then
+            export PROTON_DLSS_UPGRADE=1
+        fi
+        if grep -q 'indicator = true' "$PROFILE_FILE" 2>/dev/null; then
+            export PROTON_DLSS_INDICATOR=1
+        fi
+        
+        # DXVK settings
+        if grep -q 'nvapi = true' "$PROFILE_FILE" 2>/dev/null; then
+            export DXVK_ENABLE_NVAPI=1
+        fi
+        if grep -q 'async_compile = true' "$PROFILE_FILE" 2>/dev/null; then
+            export DXVK_ASYNC=1
+        fi
+        
+        # Proton settings
+        if grep -q 'esync = false' "$PROFILE_FILE" 2>/dev/null; then
+            export PROTON_NO_ESYNC=1
+        fi
+        if grep -q 'fsync = false' "$PROFILE_FILE" 2>/dev/null; then
+            export PROTON_NO_FSYNC=1
+        fi
+        
+        # Wrappers
+        WRAPPERS=""
+        if grep -q 'mangohud = true' "$PROFILE_FILE" 2>/dev/null; then
+            WRAPPERS="$WRAPPERS mangohud"
+        fi
+        if grep -q 'gamemode = true' "$PROFILE_FILE" 2>/dev/null; then
+            WRAPPERS="$WRAPPERS gamemoderun"
+        fi
+        if grep -q 'dlss_swapper = true' "$PROFILE_FILE" 2>/dev/null; then
+            WRAPPERS="$WRAPPERS dlss-swapper"
+        fi
+        
+        if [[ -n "$WRAPPERS" ]]; then
+            echo "[unvcpfl] Wrappers:$WRAPPERS" >&2
+            exec $WRAPPERS "${COMMAND[@]}"
+        fi
+    fi
+else
+    echo "[unvcpfl] No profile found for: $EXE_NAME" >&2
+fi
+
+# Execute the game
+exec "${COMMAND[@]}"
