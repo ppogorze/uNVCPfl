@@ -6,6 +6,8 @@
 
 > **Note**: This codebase is primarily AI-generated as a proof of concept. The code structure and implementation were created with AI assistance and may require manual refinement for production use.
 
+Idea from: [EmkMage](https://www.reddit.com/r/cachyos/comments/1pw9j1z/wip_my_arch_nvidia_control_panel/#lightbox)
+
 ![Screenshot](public/screenshot.png)
 
 A modern, user-friendly application to configure per-game graphics settings for Linux gaming. Built with Tauri, React, and Rust.
