@@ -44,7 +44,12 @@ export interface DxvkSettings {
 }
 
 export interface Vkd3dSettings {
-    config: string[];
+    no_dxr: boolean;
+    force_dxr: boolean;
+    dxr12: boolean;
+    force_static_cbv: boolean;
+    single_queue: boolean;
+    no_upload_hvv: boolean;
     frame_rate: number;
 }
 
@@ -172,6 +177,15 @@ export async function isLactAvailable(): Promise<boolean> {
 
 export async function getLactProfiles(): Promise<string[]> {
     return invoke<string[]>("get_lact_profiles");
+}
+
+// System Info
+export async function getHostname(): Promise<string> {
+    return invoke<string>("get_hostname");
+}
+
+export async function createDesktopEntry(game: Game, profile: GameProfile): Promise<string> {
+    return invoke<string>("create_desktop_entry", { game, profile });
 }
 
 // Utility functions

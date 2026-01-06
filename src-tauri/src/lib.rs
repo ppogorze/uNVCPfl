@@ -102,6 +102,61 @@ fn get_lact_profiles() -> Vec<String> {
     profiles::get_lact_profiles()
 }
 
+#[tauri::command]
+fn get_hostname() -> String {
+    hostname::get()
+        .map(|h| h.to_string_lossy().to_string())
+        .unwrap_or_else(|_| "Unknown".to_string())
+}
+
+#[tauri::command]
+fn create_desktop_entry(game: Game, profile: GameProfile, state: State<'_, Arc<ProfileManager>>) -> Result<String, String> {
+    let env_vars = state.build_env_vars(&profile);
+    let wrappers = state.build_wrapper_cmd(&profile);
+    
+    let env_string = env_vars.iter()
+        .map(|(k, v)| format!("{}={}", k, v))
+        .collect::<Vec<_>>()
+        .join(" ");
+    
+    let wrapper_string = wrappers.join(" ");
+    
+    // Build launch command based on game source
+    let exec = match game.source {
+        games::GameSource::Steam => format!("env {} {} steam steam://rungameid/{}", env_string, wrapper_string, game.id),
+        games::GameSource::Lutris => format!("env {} {} lutris lutris:rungameid/{}", env_string, wrapper_string, game.id),
+        games::GameSource::Heroic => format!("env {} {} heroic heroic://launch/{}", env_string, wrapper_string, game.id),
+        games::GameSource::Faugus => format!("env {} {} xdg-open faugus://{}", env_string, wrapper_string, game.id),
+    };
+    
+    let desktop_entry = format!(
+r#"[Desktop Entry]
+Name={}
+Comment=Launched via uNVCPfL
+Exec={}
+Type=Application
+Categories=Game;
+"#,
+        game.name,
+        exec.trim()
+    );
+    
+    // Write to ~/.local/share/applications/
+    let apps_dir = dirs::data_local_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("~/.local/share"))
+        .join("applications");
+    
+    std::fs::create_dir_all(&apps_dir).ok();
+    
+    let filename = format!("unvcpfl-{}.desktop", game.name.to_lowercase().replace(' ', "-"));
+    let path = apps_dir.join(&filename);
+    
+    std::fs::write(&path, desktop_entry)
+        .map_err(|e| format!("Failed to write desktop entry: {}", e))?;
+    
+    Ok(path.to_string_lossy().to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let gpu_state = create_gpu_state();
@@ -131,6 +186,9 @@ pub fn run() {
             // LACT integration
             is_lact_available,
             get_lact_profiles,
+            // System info
+            get_hostname,
+            create_desktop_entry,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

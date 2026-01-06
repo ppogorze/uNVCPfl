@@ -308,24 +308,36 @@ impl GameDetector {
 
     pub fn detect_faugus_games() -> Vec<Game> {
         let mut games = Vec::new();
+        let mut seen_ids = std::collections::HashSet::new();
 
-        if let Some(data_dir) = dirs::data_dir() {
-            let applications_dir = data_dir.join("applications");
+        // First, try to read from Faugus config file (games.json)
+        if let Some(config_dir) = dirs::config_dir() {
+            let games_json = config_dir.join("faugus-launcher").join("games.json");
+            if games_json.exists() {
+                if let Ok(content) = fs::read_to_string(&games_json) {
+                    if let Ok(json_games) = serde_json::from_str::<Vec<serde_json::Value>>(&content)
+                    {
+                        for entry in json_games {
+                            if let Some(name) = entry.get("title").and_then(|v| v.as_str()) {
+                                let prefix =
+                                    entry.get("prefix").and_then(|v| v.as_str()).unwrap_or("");
+                                let id =
+                                    format!("faugus-{}", name.to_lowercase().replace(' ', "-"));
 
-            if applications_dir.exists() {
-                // Look for Faugus launcher .desktop files
-                for entry in fs::read_dir(&applications_dir)
-                    .into_iter()
-                    .flatten()
-                    .flatten()
-                {
-                    let path = entry.path();
-                    if path.extension().map(|e| e == "desktop").unwrap_or(false) {
-                        if let Ok(content) = fs::read_to_string(&path) {
-                            // Check if it's a Faugus launcher shortcut
-                            if content.contains("faugus-launcher") || content.contains("umu-run") {
-                                if let Some(game) = Self::parse_desktop_file(&content, &path) {
-                                    games.push(game);
+                                if !seen_ids.contains(&id) {
+                                    seen_ids.insert(id.clone());
+                                    games.push(Game {
+                                        id,
+                                        name: name.to_string(),
+                                        executable: None,
+                                        source: GameSource::Faugus,
+                                        install_path: if prefix.is_empty() {
+                                            None
+                                        } else {
+                                            Some(PathBuf::from(prefix))
+                                        },
+                                        icon_url: None,
+                                    });
                                 }
                             }
                         }
@@ -334,32 +346,33 @@ impl GameDetector {
             }
         }
 
-        // Also check ~/Faugus/ directory for prefixes
-        if let Some(home) = dirs::home_dir() {
-            let faugus_dir = home.join("Faugus");
-            if faugus_dir.exists() {
-                for entry in fs::read_dir(&faugus_dir).into_iter().flatten().flatten() {
-                    let path = entry.path();
-                    if path.is_dir() {
-                        let name = path
-                            .file_name()
-                            .and_then(|n| n.to_str())
-                            .unwrap_or("Unknown")
-                            .to_string();
+        // If no games from config, check desktop files
+        if games.is_empty() {
+            if let Some(data_dir) = dirs::data_dir() {
+                let applications_dir = data_dir.join("applications");
 
-                        // Skip if it looks like a system folder
-                        if name.starts_with('.') {
-                            continue;
+                if applications_dir.exists() {
+                    for entry in fs::read_dir(&applications_dir)
+                        .into_iter()
+                        .flatten()
+                        .flatten()
+                    {
+                        let path = entry.path();
+                        if path.extension().map(|e| e == "desktop").unwrap_or(false) {
+                            if let Ok(content) = fs::read_to_string(&path) {
+                                if content.contains("faugus-launcher")
+                                    || content.contains("umu-run")
+                                {
+                                    if let Some(game) = Self::parse_desktop_file(&content, &path) {
+                                        let id = game.id.clone();
+                                        if !seen_ids.contains(&id) {
+                                            seen_ids.insert(id);
+                                            games.push(game);
+                                        }
+                                    }
+                                }
+                            }
                         }
-
-                        games.push(Game {
-                            id: format!("faugus-{}", name.to_lowercase().replace(' ', "-")),
-                            name,
-                            executable: None,
-                            source: GameSource::Faugus,
-                            install_path: Some(path),
-                            icon_url: None,
-                        });
                     }
                 }
             }

@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo } from "react";
-import { Game, GameProfile, getProfile, saveProfile, buildEnvVars, buildWrapperCmd, isLactAvailable, getLactProfiles } from "@/lib/api";
+import { Game, GameProfile, getProfile, saveProfile, buildEnvVars, buildWrapperCmd, isLactAvailable, getLactProfiles, createDesktopEntry } from "@/lib/api";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Save, RotateCcw, Layers, Sparkles, Monitor, Gamepad2, Copy, Check, Terminal, Zap, HelpCircle } from "lucide-react";
+import { Save, RotateCcw, Layers, Sparkles, Monitor, Gamepad2, Copy, Check, Terminal, Zap, HelpCircle, FileDown } from "lucide-react";
 
 // Tooltip component
 function Tooltip({ children, text }: { children: React.ReactNode; text: string }) {
@@ -41,7 +41,12 @@ const createDefaultProfile = (game: Game | null): GameProfile => ({
         async_compile: true,
     },
     vkd3d: {
-        config: [],
+        no_dxr: false,
+        force_dxr: false,
+        dxr12: false,
+        force_static_cbv: false,
+        single_queue: false,
+        no_upload_hvv: false,
         frame_rate: 0,
     },
     nvidia: {
@@ -333,6 +338,17 @@ export function MainPanel({ selectedGame, onProfileSaved }: MainPanelProps) {
         setHasChanges(true);
     };
 
+    const handleCreateDesktopEntry = async () => {
+        if (!selectedGame) return;
+        try {
+            const path = await createDesktopEntry(selectedGame, profile);
+            console.log("Desktop entry created:", path);
+            // Could show a toast notification here
+        } catch (e) {
+            console.error("Failed to create desktop entry:", e);
+        }
+    };
+
     return (
         <div className="flex-1 flex flex-col h-full bg-background">
             {/* Header */}
@@ -348,6 +364,12 @@ export function MainPanel({ selectedGame, onProfileSaved }: MainPanelProps) {
                     </p>
                 </div>
                 <div className="flex gap-2">
+                    {selectedGame && (
+                        <Button variant="outline" size="sm" onClick={handleCreateDesktopEntry}>
+                            <FileDown className="w-4 h-4 mr-2" />
+                            Desktop Entry
+                        </Button>
+                    )}
                     <Button variant="outline" size="sm" onClick={handleReset}>
                         <RotateCcw className="w-4 h-4 mr-2" />
                         Reset
@@ -922,6 +944,90 @@ export function MainPanel({ selectedGame, onProfileSaved }: MainPanelProps) {
                                     <SelectItem value="full">Full</SelectItem>
                                 </SelectContent>
                             </Select>
+                        </SettingRow>
+                    </SettingsSection>
+
+                    <Separator />
+
+                    {/* VKD3D-Proton */}
+                    <SettingsSection title="VKD3D-Proton (DX12)" icon={<Layers className="w-4 h-4" />}>
+                        <SettingRow
+                            label="Disable DXR"
+                            description="Disable DirectX Raytracing"
+                            tooltip="VKD3D_CONFIG=nodxr - Useful for games with buggy RT"
+                        >
+                            <Switch
+                                checked={profile.vkd3d.no_dxr}
+                                onCheckedChange={(v) => updateNested("vkd3d", "no_dxr", v)}
+                            />
+                        </SettingRow>
+
+                        <SettingRow
+                            label="Force DXR"
+                            description="Enable DXR even if unsafe"
+                            tooltip="VKD3D_CONFIG=dxr - Forces raytracing even when not recommended"
+                        >
+                            <Switch
+                                checked={profile.vkd3d.force_dxr}
+                                onCheckedChange={(v) => updateNested("vkd3d", "force_dxr", v)}
+                            />
+                        </SettingRow>
+
+                        <SettingRow
+                            label="DXR 1.2 (Experimental)"
+                            description="Enable experimental DXR 1.2 with opacity micromap"
+                            tooltip="VKD3D_CONFIG=dxr12 - Requires VK_EXT_opacity_micromap"
+                        >
+                            <Switch
+                                checked={profile.vkd3d.dxr12}
+                                onCheckedChange={(v) => updateNested("vkd3d", "dxr12", v)}
+                            />
+                        </SettingRow>
+
+                        <SettingRow
+                            label="Force Static CBV (NVIDIA)"
+                            description="Unsafe speed hack for NVIDIA GPUs"
+                            tooltip="VKD3D_CONFIG=force_static_cbv - May improve performance, may cause issues"
+                        >
+                            <Switch
+                                checked={profile.vkd3d.force_static_cbv}
+                                onCheckedChange={(v) => updateNested("vkd3d", "force_static_cbv", v)}
+                            />
+                        </SettingRow>
+
+                        <SettingRow
+                            label="Single Queue"
+                            description="Disable async compute/transfer queues"
+                            tooltip="VKD3D_CONFIG=single_queue - May fix stability issues"
+                        >
+                            <Switch
+                                checked={profile.vkd3d.single_queue}
+                                onCheckedChange={(v) => updateNested("vkd3d", "single_queue", v)}
+                            />
+                        </SettingRow>
+
+                        <SettingRow
+                            label="No Upload HVV"
+                            description="Don't use resizable BAR for uploads"
+                            tooltip="VKD3D_CONFIG=no_upload_hvv - Free up VRAM at cost of GPU performance"
+                        >
+                            <Switch
+                                checked={profile.vkd3d.no_upload_hvv}
+                                onCheckedChange={(v) => updateNested("vkd3d", "no_upload_hvv", v)}
+                            />
+                        </SettingRow>
+
+                        <SettingRow label="Frame Rate Limit" description="VKD3D frame rate limiter">
+                            <input
+                                type="number"
+                                value={profile.vkd3d.frame_rate || ""}
+                                onChange={(e) => {
+                                    const val = e.target.value ? parseInt(e.target.value) : 0;
+                                    updateNested("vkd3d", "frame_rate", val);
+                                }}
+                                className="w-20 bg-background border border-input px-2 py-1.5 text-sm"
+                                placeholder="0"
+                            />
                         </SettingRow>
                     </SettingsSection>
                 </div>

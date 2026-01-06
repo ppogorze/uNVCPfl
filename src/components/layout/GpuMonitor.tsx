@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
-import { GpuInfo, getGpuInfo, formatBytes, formatPower, formatTemperature, formatClock } from "@/lib/api";
+import { GpuInfo, getGpuInfo, getHostname, formatBytes, formatPower, formatTemperature, formatClock } from "@/lib/api";
 import { Cpu, Thermometer, Zap, HardDrive } from "lucide-react";
 
 export function GpuMonitor() {
     const [gpuInfo, setGpuInfo] = useState<GpuInfo | null>(null);
+    const [hostname, setHostname] = useState<string>("");
 
     useEffect(() => {
         // Initial fetch
         getGpuInfo().then(setGpuInfo);
+        getHostname().then(setHostname);
 
         // Poll every 10 seconds
         const interval = setInterval(() => {
@@ -36,7 +38,7 @@ export function GpuMonitor() {
                 </div>
                 <div>
                     <div className="text-sm font-medium text-foreground">{gpuInfo.name}</div>
-                    <div className="text-xs text-muted-foreground">NVIDIA GeForce</div>
+                    <div className="text-xs text-muted-foreground">@{hostname || "localhost"}</div>
                 </div>
             </div>
 

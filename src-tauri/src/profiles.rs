@@ -34,9 +34,19 @@ pub struct DxvkSettings {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Vkd3dSettings {
     #[serde(default)]
-    pub config: Vec<String>,
+    pub no_dxr: bool, // nodxr - Disable DXR raytracing
     #[serde(default)]
-    pub frame_rate: u32,
+    pub force_dxr: bool, // dxr - Force enable DXR even if unsafe
+    #[serde(default)]
+    pub dxr12: bool, // dxr12 - Experimental DXR 1.2 support
+    #[serde(default)]
+    pub force_static_cbv: bool, // force_static_cbv - NVIDIA speed hack (unsafe)
+    #[serde(default)]
+    pub single_queue: bool, // single_queue - No async compute/transfer
+    #[serde(default)]
+    pub no_upload_hvv: bool, // no_upload_hvv - Don't use resizable BAR for uploads
+    #[serde(default)]
+    pub frame_rate: u32, // VKD3D_FRAME_RATE
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -288,8 +298,27 @@ impl ProfileManager {
         }
 
         // VKD3D settings
-        if !profile.vkd3d.config.is_empty() {
-            env.insert("VKD3D_CONFIG".to_string(), profile.vkd3d.config.join(","));
+        let mut vkd3d_config = Vec::new();
+        if profile.vkd3d.no_dxr {
+            vkd3d_config.push("nodxr");
+        }
+        if profile.vkd3d.force_dxr {
+            vkd3d_config.push("dxr");
+        }
+        if profile.vkd3d.dxr12 {
+            vkd3d_config.push("dxr12");
+        }
+        if profile.vkd3d.force_static_cbv {
+            vkd3d_config.push("force_static_cbv");
+        }
+        if profile.vkd3d.single_queue {
+            vkd3d_config.push("single_queue");
+        }
+        if profile.vkd3d.no_upload_hvv {
+            vkd3d_config.push("no_upload_hvv");
+        }
+        if !vkd3d_config.is_empty() {
+            env.insert("VKD3D_CONFIG".to_string(), vkd3d_config.join(","));
         }
         if profile.vkd3d.frame_rate > 0 {
             env.insert(

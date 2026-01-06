@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo, useCallback } from "react";
 import { Game, GameProfile, detectGames, listProfiles } from "@/lib/api";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { GpuMonitor } from "./GpuMonitor";
-import { Gamepad2, Search, RefreshCw } from "lucide-react";
+import { Search, RefreshCw, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface SidebarProps {
@@ -89,21 +89,6 @@ export function Sidebar({ selectedGame, onSelectGame, profilesVersion }: Sidebar
         );
     }, [profiles]);
 
-    const getSourceIcon = (source: string) => {
-        switch (source) {
-            case "Steam":
-                return "🎮";
-            case "Lutris":
-                return "🍷";
-            case "Heroic":
-                return "⚔️";
-            case "Faugus":
-                return "🚀";
-            default:
-                return "🎲";
-        }
-    };
-
     // Handle Enter key for immediate search
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key === "Enter") {
@@ -124,7 +109,7 @@ export function Sidebar({ selectedGame, onSelectGame, profilesVersion }: Sidebar
                     className="w-full justify-start"
                     onClick={() => onSelectGame(null)}
                 >
-                    <Gamepad2 className="w-4 h-4 mr-2" />
+                    <Settings2 className="w-4 h-4 mr-2" />
                     Global Settings
                 </Button>
             </div>
@@ -185,7 +170,7 @@ export function Sidebar({ selectedGame, onSelectGame, profilesVersion }: Sidebar
                                     : "hover:bg-secondary"
                                     }`}
                             >
-                                {/* Game Icon */}
+                                {/* Game Poster */}
                                 {game.icon_url ? (
                                     <img
                                         src={game.icon_url}
@@ -199,11 +184,9 @@ export function Sidebar({ selectedGame, onSelectGame, profilesVersion }: Sidebar
                                     />
                                 ) : null}
                                 <div
-                                    className={`w-10 h-14 bg-secondary flex items-center justify-center text-lg flex-shrink-0 ${game.icon_url ? "hidden" : ""}`}
+                                    className={`w-10 h-14 bg-secondary flex-shrink-0 ${game.icon_url ? "hidden" : ""}`}
                                     style={{ borderRadius: '5px' }}
-                                >
-                                    {getSourceIcon(game.source)}
-                                </div>
+                                />
 
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-1.5">
@@ -212,9 +195,8 @@ export function Sidebar({ selectedGame, onSelectGame, profilesVersion }: Sidebar
                                         )}
                                         <span className="text-sm font-medium truncate block">{game.name}</span>
                                     </div>
-                                    <div className="text-xs text-muted-foreground flex items-center gap-1">
-                                        <span>{getSourceIcon(game.source)}</span>
-                                        <span>{game.source}</span>
+                                    <div className="text-xs text-muted-foreground">
+                                        {game.source}
                                     </div>
                                 </div>
                             </button>
