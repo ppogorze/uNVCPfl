@@ -6,10 +6,20 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DlssSettings {
     #[serde(default)]
-    pub upgrade: bool,
+    pub upgrade: bool, // PROTON_DLSS_UPGRADE=1
     #[serde(default)]
-    pub indicator: bool,
-    pub preset: Option<String>,
+    pub indicator: bool, // PROTON_DLSS_INDICATOR=1
+    #[serde(default)]
+    pub ngx_updater: bool, // PROTON_ENABLE_NGX_UPDATER=1
+    #[serde(default)]
+    pub sr_override: bool, // DXVK_NVAPI_DRS_NGX_DLSS_SR_OVERRIDE=on
+    #[serde(default)]
+    pub rr_override: bool, // DXVK_NVAPI_DRS_NGX_DLSS_RR_OVERRIDE=on
+    #[serde(default)]
+    pub fg_override: bool, // DXVK_NVAPI_DRS_NGX_DLSS_FG_OVERRIDE=on
+    pub sr_preset: Option<String>, // DXVK_NVAPI_DRS_NGX_DLSS_SR_OVERRIDE_RENDER_PRESET_SELECTION
+    pub rr_preset: Option<String>, // DXVK_NVAPI_DRS_NGX_DLSS_RR_OVERRIDE_RENDER_PRESET_SELECTION
+    pub fg_multi_frame: Option<String>, // DXVK_NVAPI_DRS_NGX_DLSSG_MULTI_FRAME_COUNT
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -19,8 +29,6 @@ pub struct DxvkSettings {
     pub nvapi: bool,
     #[serde(default)]
     pub async_compile: bool,
-    #[serde(default = "default_true")]
-    pub shader_cache: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -33,10 +41,6 @@ pub struct Vkd3dSettings {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct NvidiaSettings {
-    pub threaded_optimization: Option<String>,
-    pub shader_cache_size: Option<u64>,
-    #[serde(default)]
-    pub skip_cleanup: bool,
     pub vsync: Option<String>,
     #[serde(default)]
     pub triple_buffer: bool,
@@ -49,10 +53,7 @@ pub struct NvidiaSettings {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ProtonSettings {
     pub verb: Option<String>,
-    #[serde(default = "default_true")]
-    pub esync: bool,
-    #[serde(default = "default_true")]
-    pub fsync: bool,
+    pub sync_mode: Option<String>, // "default", "esync", "fsync", "ntsync"
     #[serde(default)]
     pub enable_wayland: bool,
 }
@@ -65,6 +66,10 @@ pub struct GamescopeSettings {
     pub height: Option<u32>,
     pub internal_width: Option<u32>,
     pub internal_height: Option<u32>,
+    #[serde(default)]
+    pub dsr_enabled: bool, // Dynamic Super Resolution mode
+    pub dsr_width: Option<u32>,
+    pub dsr_height: Option<u32>,
     pub upscale_filter: Option<String>,
     pub fsr_sharpness: Option<u32>,
     #[serde(default)]
@@ -81,9 +86,19 @@ pub struct GamescopeSettings {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct MangoHudSettings {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub fps_limit_enabled: bool,
+    pub fps_limit: Option<u32>,
+    pub fps_limiter_mode: Option<String>, // "early", "late"
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct WrapperSettings {
     #[serde(default)]
-    pub mangohud: bool,
+    pub mangohud: MangoHudSettings,
     #[serde(default)]
     pub gamemode: bool,
     #[serde(default)]
@@ -117,10 +132,6 @@ pub struct GameProfile {
     #[serde(default)]
     pub custom_env: HashMap<String, String>,
     pub custom_args: Option<String>,
-}
-
-fn default_true() -> bool {
-    true
 }
 
 impl Default for GameProfile {
@@ -225,10 +236,43 @@ impl ProfileManager {
         if profile.dlss.indicator {
             env.insert("PROTON_DLSS_INDICATOR".to_string(), "1".to_string());
         }
-        if let Some(preset) = &profile.dlss.preset {
+        if profile.dlss.ngx_updater {
+            env.insert("PROTON_ENABLE_NGX_UPDATER".to_string(), "1".to_string());
+        }
+        if profile.dlss.sr_override {
+            env.insert(
+                "DXVK_NVAPI_DRS_NGX_DLSS_SR_OVERRIDE".to_string(),
+                "on".to_string(),
+            );
+        }
+        if profile.dlss.rr_override {
+            env.insert(
+                "DXVK_NVAPI_DRS_NGX_DLSS_RR_OVERRIDE".to_string(),
+                "on".to_string(),
+            );
+        }
+        if profile.dlss.fg_override {
+            env.insert(
+                "DXVK_NVAPI_DRS_NGX_DLSS_FG_OVERRIDE".to_string(),
+                "on".to_string(),
+            );
+        }
+        if let Some(preset) = &profile.dlss.sr_preset {
             env.insert(
                 "DXVK_NVAPI_DRS_NGX_DLSS_SR_OVERRIDE_RENDER_PRESET_SELECTION".to_string(),
                 preset.clone(),
+            );
+        }
+        if let Some(preset) = &profile.dlss.rr_preset {
+            env.insert(
+                "DXVK_NVAPI_DRS_NGX_DLSS_RR_OVERRIDE_RENDER_PRESET_SELECTION".to_string(),
+                preset.clone(),
+            );
+        }
+        if let Some(count) = &profile.dlss.fg_multi_frame {
+            env.insert(
+                "DXVK_NVAPI_DRS_NGX_DLSSG_MULTI_FRAME_COUNT".to_string(),
+                count.clone(),
             );
         }
 
@@ -241,9 +285,6 @@ impl ProfileManager {
         }
         if profile.dxvk.async_compile {
             env.insert("DXVK_ASYNC".to_string(), "1".to_string());
-        }
-        if !profile.dxvk.shader_cache {
-            env.insert("DXVK_SHADER_CACHE".to_string(), "0".to_string());
         }
 
         // VKD3D settings
@@ -258,23 +299,6 @@ impl ProfileManager {
         }
 
         // NVIDIA driver settings
-        if let Some(threaded) = &profile.nvidia.threaded_optimization {
-            let val = match threaded.as_str() {
-                "on" => "1",
-                "off" => "0",
-                _ => "1", // auto defaults to on
-            };
-            env.insert("__GL_THREADED_OPTIMIZATIONS".to_string(), val.to_string());
-        }
-        if let Some(size) = profile.nvidia.shader_cache_size {
-            env.insert("__GL_SHADER_DISK_CACHE_SIZE".to_string(), size.to_string());
-        }
-        if profile.nvidia.skip_cleanup {
-            env.insert(
-                "__GL_SHADER_DISK_CACHE_SKIP_CLEANUP".to_string(),
-                "1".to_string(),
-            );
-        }
         if let Some(vsync) = &profile.nvidia.vsync {
             let val = if vsync == "on" { "1" } else { "0" };
             env.insert("__GL_SYNC_TO_VBLANK".to_string(), val.to_string());
@@ -301,14 +325,33 @@ impl ProfileManager {
         if let Some(verb) = &profile.proton.verb {
             env.insert("PROTON_VERB".to_string(), verb.clone());
         }
-        if !profile.proton.esync {
-            env.insert("PROTON_NO_ESYNC".to_string(), "1".to_string());
+
+        // Sync mode
+        if let Some(sync_mode) = &profile.proton.sync_mode {
+            match sync_mode.as_str() {
+                "esync" => {
+                    env.insert("PROTON_NO_FSYNC".to_string(), "1".to_string());
+                }
+                "fsync" => {
+                    env.insert("PROTON_NO_ESYNC".to_string(), "1".to_string());
+                }
+                "ntsync" => {
+                    // ntsync uses WINEFSYNC_FUTEX2 (kernel 6.3+)
+                    env.insert("WINEFSYNC_FUTEX2".to_string(), "1".to_string());
+                }
+                _ => {} // "default" - let Proton decide
+            }
         }
-        if !profile.proton.fsync {
-            env.insert("PROTON_NO_FSYNC".to_string(), "1".to_string());
-        }
+
         if profile.proton.enable_wayland {
             env.insert("PROTON_ENABLE_WAYLAND".to_string(), "1".to_string());
+        }
+
+        // MangoHud fps limiter
+        if profile.wrappers.mangohud.enabled && profile.wrappers.mangohud.fps_limit_enabled {
+            if let Some(fps) = profile.wrappers.mangohud.fps_limit {
+                env.insert("MANGOHUD_CONFIG".to_string(), format!("fps_limit={}", fps));
+            }
         }
 
         // Custom environment variables
@@ -323,8 +366,25 @@ impl ProfileManager {
     pub fn build_wrapper_cmd(&self, profile: &GameProfile) -> Vec<String> {
         let mut wrappers = Vec::new();
 
+        // LACT profile switch (prepend as a command)
+        if let Some(lact_profile) = &profile.wrappers.lact_profile {
+            wrappers.push(format!("lact cli profile set \"{}\" &&", lact_profile));
+        }
+
         if profile.wrappers.gamescope.enabled {
             let mut gs = vec!["gamescope".to_string()];
+
+            // DSR mode - render at higher resolution than display
+            if profile.wrappers.gamescope.dsr_enabled {
+                if let Some(w) = profile.wrappers.gamescope.dsr_width {
+                    gs.push("-w".to_string());
+                    gs.push(w.to_string());
+                }
+                if let Some(h) = profile.wrappers.gamescope.dsr_height {
+                    gs.push("-h".to_string());
+                    gs.push(h.to_string());
+                }
+            }
 
             if let Some(w) = profile.wrappers.gamescope.width {
                 gs.push("-W".to_string());
@@ -376,7 +436,7 @@ impl ProfileManager {
             wrappers.extend(gs);
         }
 
-        if profile.wrappers.mangohud {
+        if profile.wrappers.mangohud.enabled {
             wrappers.push("mangohud".to_string());
         }
 
@@ -390,12 +450,6 @@ impl ProfileManager {
 
         if profile.wrappers.dlss_swapper {
             wrappers.push("dlss-swapper".to_string());
-        }
-
-        // LACT profile switch (prepend as a command)
-        if let Some(lact_profile) = &profile.wrappers.lact_profile {
-            // Insert at beginning: lact profile switch "name" &&
-            wrappers.insert(0, format!("lact profile switch \"{}\" &&", lact_profile));
         }
 
         wrappers

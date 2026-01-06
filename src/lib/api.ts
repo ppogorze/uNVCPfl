@@ -28,14 +28,19 @@ export interface Game {
 export interface DlssSettings {
     upgrade: boolean;
     indicator: boolean;
-    preset: string | null;
+    ngx_updater: boolean;
+    sr_override: boolean;
+    rr_override: boolean;
+    fg_override: boolean;
+    sr_preset: string | null;
+    rr_preset: string | null;
+    fg_multi_frame: string | null;
 }
 
 export interface DxvkSettings {
     hud: string | null;
     nvapi: boolean;
     async_compile: boolean;
-    shader_cache: boolean;
 }
 
 export interface Vkd3dSettings {
@@ -44,9 +49,6 @@ export interface Vkd3dSettings {
 }
 
 export interface NvidiaSettings {
-    threaded_optimization: string | null;
-    shader_cache_size: number | null;
-    skip_cleanup: boolean;
     vsync: string | null;
     triple_buffer: boolean;
     prime: boolean;
@@ -55,8 +57,7 @@ export interface NvidiaSettings {
 
 export interface ProtonSettings {
     verb: string | null;
-    esync: boolean;
-    fsync: boolean;
+    sync_mode: string | null;  // "default", "esync", "fsync", "ntsync"
     enable_wayland: boolean;
 }
 
@@ -66,6 +67,9 @@ export interface GamescopeSettings {
     height: number | null;
     internal_width: number | null;
     internal_height: number | null;
+    dsr_enabled: boolean;
+    dsr_width: number | null;
+    dsr_height: number | null;
     upscale_filter: string | null;
     fsr_sharpness: number | null;
     fullscreen: boolean;
@@ -76,8 +80,15 @@ export interface GamescopeSettings {
     hdr: boolean;
 }
 
+export interface MangoHudSettings {
+    enabled: boolean;
+    fps_limit_enabled: boolean;
+    fps_limit: number | null;
+    fps_limiter_mode: string | null;  // "early", "late"
+}
+
 export interface WrapperSettings {
-    mangohud: boolean;
+    mangohud: MangoHudSettings;
     gamemode: boolean;
     game_performance: boolean;
     dlss_swapper: boolean;

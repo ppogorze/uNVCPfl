@@ -5,7 +5,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Save, RotateCcw, Cpu, Layers, Sparkles, Monitor, Gamepad2, Copy, Check, Terminal, Gpu, Zap } from "lucide-react";
+import { Save, RotateCcw, Layers, Sparkles, Monitor, Gamepad2, Copy, Check, Terminal, Zap, HelpCircle } from "lucide-react";
+
+// Tooltip component
+function Tooltip({ children, text }: { children: React.ReactNode; text: string }) {
+    return (
+        <span className="relative group cursor-help">
+            {children}
+            <span className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 px-2 py-1 bg-popover border border-border text-xs text-popover-foreground whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                {text}
+            </span>
+        </span>
+    );
+}
 
 // Default profile structure
 const createDefaultProfile = (game: Game | null): GameProfile => ({
@@ -15,22 +27,24 @@ const createDefaultProfile = (game: Game | null): GameProfile => ({
     dlss: {
         upgrade: false,
         indicator: false,
-        preset: null,
+        ngx_updater: false,
+        sr_override: false,
+        rr_override: false,
+        fg_override: false,
+        sr_preset: null,
+        rr_preset: null,
+        fg_multi_frame: null,
     },
     dxvk: {
         hud: null,
         nvapi: true,
         async_compile: true,
-        shader_cache: true,
     },
     vkd3d: {
         config: [],
         frame_rate: 0,
     },
     nvidia: {
-        threaded_optimization: "auto",
-        shader_cache_size: 12000000000,
-        skip_cleanup: true,
         vsync: null,
         triple_buffer: false,
         prime: false,
@@ -38,12 +52,16 @@ const createDefaultProfile = (game: Game | null): GameProfile => ({
     },
     proton: {
         verb: "waitforexitandrun",
-        esync: true,
-        fsync: true,
+        sync_mode: null,
         enable_wayland: false,
     },
     wrappers: {
-        mangohud: false,
+        mangohud: {
+            enabled: false,
+            fps_limit_enabled: false,
+            fps_limit: null,
+            fps_limiter_mode: null,
+        },
         gamemode: false,
         game_performance: false,
         dlss_swapper: false,
@@ -53,6 +71,9 @@ const createDefaultProfile = (game: Game | null): GameProfile => ({
             height: null,
             internal_width: null,
             internal_height: null,
+            dsr_enabled: false,
+            dsr_width: null,
+            dsr_height: null,
             upscale_filter: null,
             fsr_sharpness: null,
             fullscreen: true,
@@ -93,13 +114,16 @@ function LactProfileSection({
     return (
         <div className="bg-card border border-nvidia/30 p-4 mb-6">
             <div className="flex items-center gap-2 mb-3">
-                <Gpu className="w-4 h-4 text-nvidia" />
+                <Zap className="w-4 h-4 text-nvidia" />
                 <span className="text-sm font-medium">LACT GPU Profile</span>
+                <Tooltip text="Switch GPU power profile when launching this game">
+                    <HelpCircle className="w-3 h-3 text-muted-foreground" />
+                </Tooltip>
             </div>
             <div className="flex items-center justify-between">
                 <div>
                     <div className="text-sm font-medium">Apply LACT Profile</div>
-                    <div className="text-xs text-muted-foreground">Switch to a specific LACT GPU profile when launching</div>
+                    <div className="text-xs text-muted-foreground">Runs: lact cli profile set "name"</div>
                 </div>
                 <Select
                     value={profile.wrappers.lact_profile || "none"}
@@ -134,7 +158,6 @@ function LaunchPreview({ profile, isSteamGame }: { profile: GameProfile; isSteam
     const [copiedSimple, setCopiedSimple] = useState(false);
 
     useEffect(() => {
-        // Build env vars and wrappers from profile
         buildEnvVars(profile).then(setEnvVars).catch(() => setEnvVars({}));
         buildWrapperCmd(profile).then(setWrappers).catch(() => setWrappers([]));
     }, [profile]);
@@ -199,36 +222,17 @@ function LaunchPreview({ profile, isSteamGame }: { profile: GameProfile; isSteam
                 {isSteamGame && (
                     <div className="flex gap-2">
                         <Button variant="outline" size="sm" onClick={handleCopySimple} className="h-7 text-xs">
-                            {copiedSimple ? (
-                                <>
-                                    <Check className="w-3 h-3 mr-1 text-nvidia" />
-                                    Copied!
-                                </>
-                            ) : (
-                                <>
-                                    <Copy className="w-3 h-3 mr-1" />
-                                    Copy unvcpfl
-                                </>
-                            )}
+                            {copiedSimple ? <Check className="w-3 h-3 mr-1 text-nvidia" /> : <Copy className="w-3 h-3 mr-1" />}
+                            Copy unvcpfl
                         </Button>
                         <Button variant="outline" size="sm" onClick={handleCopyFull} className="h-7 text-xs">
-                            {copiedFull ? (
-                                <>
-                                    <Check className="w-3 h-3 mr-1 text-nvidia" />
-                                    Copied!
-                                </>
-                            ) : (
-                                <>
-                                    <Copy className="w-3 h-3 mr-1" />
-                                    Copy Full Command
-                                </>
-                            )}
+                            {copiedFull ? <Check className="w-3 h-3 mr-1 text-nvidia" /> : <Copy className="w-3 h-3 mr-1" />}
+                            Copy Full
                         </Button>
                     </div>
                 )}
             </div>
 
-            {/* Environment Variables */}
             {hasEnvVars && (
                 <div className="mb-3">
                     <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Environment Variables</div>
@@ -244,7 +248,6 @@ function LaunchPreview({ profile, isSteamGame }: { profile: GameProfile; isSteam
                 </div>
             )}
 
-            {/* Wrappers */}
             {hasWrappers && (
                 <div className="mb-3">
                     <div className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Wrappers</div>
@@ -254,7 +257,6 @@ function LaunchPreview({ profile, isSteamGame }: { profile: GameProfile; isSteam
                 </div>
             )}
 
-            {/* Steam Launch Commands */}
             {isSteamGame && (
                 <>
                     <div className="mb-3">
@@ -318,7 +320,7 @@ export function MainPanel({ selectedGame, onProfileSaved }: MainPanelProps) {
         try {
             await saveProfile(profile);
             setHasChanges(false);
-            onProfileSaved?.();  // Notify parent to refresh sidebar
+            onProfileSaved?.();
         } catch (e) {
             console.error("Failed to save profile:", e);
         } finally {
@@ -363,15 +365,12 @@ export function MainPanel({ selectedGame, onProfileSaved }: MainPanelProps) {
                     {/* Launch Preview */}
                     <LaunchPreview profile={profile} isSteamGame={selectedGame?.source === "Steam"} />
 
-                    {/* LACT GPU Profile (if available) */}
+                    {/* LACT GPU Profile */}
                     <LactProfileSection profile={profile} setProfile={setProfile} setHasChanges={setHasChanges} />
 
                     {/* NVIDIA GPU Settings */}
                     <SettingsSection title="NVIDIA GPU" icon={<Zap className="w-4 h-4" />}>
-                        <SettingRow
-                            label="NVIDIA Prime"
-                            description="Force discrete GPU on hybrid systems (laptop)"
-                        >
+                        <SettingRow label="NVIDIA Prime" description="Force discrete GPU on hybrid systems">
                             <Switch
                                 checked={profile.nvidia.prime}
                                 onCheckedChange={(v) => updateNested("nvidia", "prime", v)}
@@ -379,8 +378,9 @@ export function MainPanel({ selectedGame, onProfileSaved }: MainPanelProps) {
                         </SettingRow>
 
                         <SettingRow
-                            label="Smooth Motion (RTX 40/50)"
-                            description="Frame generation on supported RTX cards"
+                            label="Smooth Motion"
+                            description="Frame generation (RTX 40/50 series only)"
+                            tooltip="NVPRESENT_ENABLE_SMOOTH_MOTION=1"
                         >
                             <Switch
                                 checked={profile.nvidia.smooth_motion}
@@ -393,10 +393,7 @@ export function MainPanel({ selectedGame, onProfileSaved }: MainPanelProps) {
 
                     {/* Frame Synchronization */}
                     <SettingsSection title="Frame Synchronization" icon={<Monitor className="w-4 h-4" />}>
-                        <SettingRow
-                            label="Vertical Sync"
-                            description="Synchronize frame rate with display refresh"
-                        >
+                        <SettingRow label="Vertical Sync" description="Synchronize frame rate with display refresh">
                             <Select
                                 value={profile.nvidia.vsync || "app"}
                                 onValueChange={(v) => updateNested("nvidia", "vsync", v === "app" ? null : v)}
@@ -412,10 +409,7 @@ export function MainPanel({ selectedGame, onProfileSaved }: MainPanelProps) {
                             </Select>
                         </SettingRow>
 
-                        <SettingRow
-                            label="Triple Buffering"
-                            description="Use triple buffering for smoother frame pacing"
-                        >
+                        <SettingRow label="Triple Buffering" description="Use triple buffering for smoother frame pacing">
                             <Switch
                                 checked={profile.nvidia.triple_buffer}
                                 onCheckedChange={(v) => updateNested("nvidia", "triple_buffer", v)}
@@ -425,62 +419,34 @@ export function MainPanel({ selectedGame, onProfileSaved }: MainPanelProps) {
 
                     <Separator />
 
-                    {/* Performance */}
-                    <SettingsSection title="Performance" icon={<Cpu className="w-4 h-4" />}>
+                    {/* Proton / Wine */}
+                    <SettingsSection title="Proton / Wine" icon={<Layers className="w-4 h-4" />}>
                         <SettingRow
-                            label="Threaded Optimization"
-                            description="Enable multi-threaded OpenGL optimizations"
+                            label="Sync Mode"
+                            description="Synchronization primitive mode"
+                            tooltip="Controls ESYNC/FSYNC/NTSYNC. 'Prefix Default' lets Proton decide."
                         >
                             <Select
-                                value={profile.nvidia.threaded_optimization || "auto"}
-                                onValueChange={(v) => updateNested("nvidia", "threaded_optimization", v)}
+                                value={profile.proton.sync_mode || "default"}
+                                onValueChange={(v) => updateNested("proton", "sync_mode", v === "default" ? null : v)}
                             >
                                 <SelectTrigger className="w-48">
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="auto">Auto</SelectItem>
-                                    <SelectItem value="on">On</SelectItem>
-                                    <SelectItem value="off">Off</SelectItem>
+                                    <SelectItem value="default">Prefix Default</SelectItem>
+                                    <SelectItem value="esync">ESYNC</SelectItem>
+                                    <SelectItem value="fsync">FSYNC</SelectItem>
+                                    <SelectItem value="ntsync">NTSYNC (Kernel 6.3+)</SelectItem>
                                 </SelectContent>
                             </Select>
                         </SettingRow>
 
                         <SettingRow
-                            label="Shader Cache"
-                            description="Cache compiled shaders to reduce stuttering"
+                            label="Proton Wayland"
+                            description="Enable native Wayland mode in Proton"
+                            tooltip="PROTON_ENABLE_WAYLAND=1"
                         >
-                            <Switch
-                                checked={profile.dxvk.shader_cache}
-                                onCheckedChange={(v) => updateNested("dxvk", "shader_cache", v)}
-                            />
-                        </SettingRow>
-
-                        <SettingRow
-                            label="Skip Shader Cache Cleanup"
-                            description="Don't delete old shader cache entries"
-                        >
-                            <Switch
-                                checked={profile.nvidia.skip_cleanup}
-                                onCheckedChange={(v) => updateNested("nvidia", "skip_cleanup", v)}
-                            />
-                        </SettingRow>
-
-                        <SettingRow label="ESYNC" description="Enhanced synchronization primitives">
-                            <Switch
-                                checked={profile.proton.esync}
-                                onCheckedChange={(v) => updateNested("proton", "esync", v)}
-                            />
-                        </SettingRow>
-
-                        <SettingRow label="FSYNC" description="Fast synchronization (requires kernel support)">
-                            <Switch
-                                checked={profile.proton.fsync}
-                                onCheckedChange={(v) => updateNested("proton", "fsync", v)}
-                            />
-                        </SettingRow>
-
-                        <SettingRow label="Proton Wayland" description="Enable Wayland support in Proton">
                             <Switch
                                 checked={profile.proton.enable_wayland}
                                 onCheckedChange={(v) => updateNested("proton", "enable_wayland", v)}
@@ -490,74 +456,119 @@ export function MainPanel({ selectedGame, onProfileSaved }: MainPanelProps) {
 
                     <Separator />
 
-                    {/* DLSS */}
-                    <SettingsSection title="DLSS" icon={<Sparkles className="w-4 h-4" />}>
-                        <SettingRow label="DLSS Upgrade" description="Automatically upgrade DLSS to latest version">
-                            <Switch
-                                checked={profile.dlss.upgrade}
-                                onCheckedChange={(v) => updateNested("dlss", "upgrade", v)}
-                            />
-                        </SettingRow>
-
-                        <SettingRow label="DLSS Indicator" description="Show DLSS status indicator in-game">
-                            <Switch
-                                checked={profile.dlss.indicator}
-                                onCheckedChange={(v) => updateNested("dlss", "indicator", v)}
-                            />
-                        </SettingRow>
-
-                        <SettingRow label="DLSS Preset" description="Force specific DLSS rendering preset">
-                            <Select
-                                value={profile.dlss.preset || "default"}
-                                onValueChange={(v) => updateNested("dlss", "preset", v === "default" ? null : v)}
-                            >
-                                <SelectTrigger className="w-48">
-                                    <SelectValue placeholder="Default" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="default">Default</SelectItem>
-                                    <SelectItem value="RENDER_PRESET_A">Preset A</SelectItem>
-                                    <SelectItem value="RENDER_PRESET_B">Preset B</SelectItem>
-                                    <SelectItem value="RENDER_PRESET_C">Preset C</SelectItem>
-                                    <SelectItem value="RENDER_PRESET_D">Preset D</SelectItem>
-                                    <SelectItem value="RENDER_PRESET_E">Preset E</SelectItem>
-                                    <SelectItem value="RENDER_PRESET_F">Preset F</SelectItem>
-                                    <SelectItem value="RENDER_PRESET_G">Preset G</SelectItem>
-                                    <SelectItem value="RENDER_PRESET_H">Preset H</SelectItem>
-                                    <SelectItem value="RENDER_PRESET_I">Preset I</SelectItem>
-                                    <SelectItem value="RENDER_PRESET_J">Preset J</SelectItem>
-                                    <SelectItem value="RENDER_PRESET_K">Preset K (Best)</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </SettingRow>
-                    </SettingsSection>
-
-                    <Separator />
-
                     {/* Wrappers */}
                     <SettingsSection title="Wrappers" icon={<Layers className="w-4 h-4" />}>
                         <SettingRow label="MangoHud" description="Display performance overlay">
                             <Switch
-                                checked={profile.wrappers.mangohud}
-                                onCheckedChange={(v) => updateNested("wrappers", "mangohud", v)}
+                                checked={profile.wrappers.mangohud.enabled}
+                                onCheckedChange={(v) => {
+                                    setProfile((prev) => ({
+                                        ...prev,
+                                        wrappers: {
+                                            ...prev.wrappers,
+                                            mangohud: { ...prev.wrappers.mangohud, enabled: v },
+                                        },
+                                    }));
+                                    setHasChanges(true);
+                                }}
                             />
                         </SettingRow>
 
-                        <SettingRow label="Gamemode" description="Apply performance optimizations while gaming">
+                        {profile.wrappers.mangohud.enabled && (
+                            <>
+                                <SettingRow label="FPS Limiter" description="Enable MangoHud FPS limiting">
+                                    <Switch
+                                        checked={profile.wrappers.mangohud.fps_limit_enabled}
+                                        onCheckedChange={(v) => {
+                                            setProfile((prev) => ({
+                                                ...prev,
+                                                wrappers: {
+                                                    ...prev.wrappers,
+                                                    mangohud: { ...prev.wrappers.mangohud, fps_limit_enabled: v },
+                                                },
+                                            }));
+                                            setHasChanges(true);
+                                        }}
+                                    />
+                                </SettingRow>
+
+                                {profile.wrappers.mangohud.fps_limit_enabled && (
+                                    <>
+                                        <SettingRow label="FPS Limit" description="Maximum frames per second">
+                                            <input
+                                                type="number"
+                                                value={profile.wrappers.mangohud.fps_limit || ""}
+                                                onChange={(e) => {
+                                                    const val = e.target.value ? parseInt(e.target.value) : null;
+                                                    setProfile((prev) => ({
+                                                        ...prev,
+                                                        wrappers: {
+                                                            ...prev.wrappers,
+                                                            mangohud: { ...prev.wrappers.mangohud, fps_limit: val },
+                                                        },
+                                                    }));
+                                                    setHasChanges(true);
+                                                }}
+                                                className="w-24 bg-background border border-input px-3 py-1.5 text-sm"
+                                                placeholder="60"
+                                            />
+                                        </SettingRow>
+
+                                        <SettingRow
+                                            label="Limiter Mode"
+                                            description="When to apply the frame limit"
+                                            tooltip="Early: before game logic. Late: after rendering."
+                                        >
+                                            <Select
+                                                value={profile.wrappers.mangohud.fps_limiter_mode || "late"}
+                                                onValueChange={(v) => {
+                                                    setProfile((prev) => ({
+                                                        ...prev,
+                                                        wrappers: {
+                                                            ...prev.wrappers,
+                                                            mangohud: { ...prev.wrappers.mangohud, fps_limiter_mode: v },
+                                                        },
+                                                    }));
+                                                    setHasChanges(true);
+                                                }}
+                                            >
+                                                <SelectTrigger className="w-32">
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="early">Early</SelectItem>
+                                                    <SelectItem value="late">Late</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                        </SettingRow>
+                                    </>
+                                )}
+                            </>
+                        )}
+
+                        <SettingRow label="Gamemode" description="Feral Gamemode optimizations">
                             <Switch
                                 checked={profile.wrappers.gamemode}
                                 onCheckedChange={(v) => updateNested("wrappers", "gamemode", v)}
                             />
                         </SettingRow>
 
-                        <SettingRow label="Game Performance (CachyOS)" description="CachyOS game-performance scheduler">
+                        <SettingRow
+                            label="Game Performance"
+                            description="CachyOS game-performance scheduler"
+                            tooltip="Requires game-performance package from CachyOS"
+                        >
                             <Switch
                                 checked={profile.wrappers.game_performance}
                                 onCheckedChange={(v) => updateNested("wrappers", "game_performance", v)}
                             />
                         </SettingRow>
 
-                        <SettingRow label="DLSS Swapper" description="Swap DLSS DLLs with latest version">
+                        <SettingRow
+                            label="DLSS Swapper"
+                            description="Swap DLSS DLLs with latest version"
+                            tooltip="Replaces embedded DLSS with latest from dlss-swapper"
+                        >
                             <Switch
                                 checked={profile.wrappers.dlss_swapper}
                                 onCheckedChange={(v) => updateNested("wrappers", "dlss_swapper", v)}
@@ -567,9 +578,120 @@ export function MainPanel({ selectedGame, onProfileSaved }: MainPanelProps) {
 
                     <Separator />
 
+                    {/* DLSS / DXVK-NVAPI */}
+                    <SettingsSection title="DLSS / DXVK-NVAPI" icon={<Sparkles className="w-4 h-4" />}>
+                        <SettingRow
+                            label="DLSS Upgrade"
+                            description="Use latest DLSS version in Proton"
+                            tooltip="PROTON_DLSS_UPGRADE=1 - Enables Frame Generation, Super Resolution, Ray Reconstruction"
+                        >
+                            <Switch
+                                checked={profile.dlss.upgrade}
+                                onCheckedChange={(v) => updateNested("dlss", "upgrade", v)}
+                            />
+                        </SettingRow>
+
+                        <SettingRow label="DLSS Indicator" description="Show DLSS status overlay in-game">
+                            <Switch
+                                checked={profile.dlss.indicator}
+                                onCheckedChange={(v) => updateNested("dlss", "indicator", v)}
+                            />
+                        </SettingRow>
+
+                        <SettingRow
+                            label="NGX Updater"
+                            description="Auto-update DLSS models"
+                            tooltip="PROTON_ENABLE_NGX_UPDATER=1"
+                        >
+                            <Switch
+                                checked={profile.dlss.ngx_updater}
+                                onCheckedChange={(v) => updateNested("dlss", "ngx_updater", v)}
+                            />
+                        </SettingRow>
+
+                        <SettingRow
+                            label="Super Resolution Override"
+                            description="Force enable DLSS Super Resolution"
+                            tooltip="DXVK_NVAPI_DRS_NGX_DLSS_SR_OVERRIDE=on"
+                        >
+                            <Switch
+                                checked={profile.dlss.sr_override}
+                                onCheckedChange={(v) => updateNested("dlss", "sr_override", v)}
+                            />
+                        </SettingRow>
+
+                        <SettingRow
+                            label="Ray Reconstruction Override"
+                            description="Force enable DLSS Ray Reconstruction"
+                            tooltip="DXVK_NVAPI_DRS_NGX_DLSS_RR_OVERRIDE=on"
+                        >
+                            <Switch
+                                checked={profile.dlss.rr_override}
+                                onCheckedChange={(v) => updateNested("dlss", "rr_override", v)}
+                            />
+                        </SettingRow>
+
+                        <SettingRow
+                            label="Frame Generation Override"
+                            description="Force enable DLSS Frame Generation"
+                            tooltip="DXVK_NVAPI_DRS_NGX_DLSS_FG_OVERRIDE=on"
+                        >
+                            <Switch
+                                checked={profile.dlss.fg_override}
+                                onCheckedChange={(v) => updateNested("dlss", "fg_override", v)}
+                            />
+                        </SettingRow>
+
+                        <SettingRow label="SR Preset" description="Super Resolution render preset">
+                            <Select
+                                value={profile.dlss.sr_preset || "default"}
+                                onValueChange={(v) => updateNested("dlss", "sr_preset", v === "default" ? null : v)}
+                            >
+                                <SelectTrigger className="w-48">
+                                    <SelectValue placeholder="Default" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="default">Default</SelectItem>
+                                    <SelectItem value="render_preset_latest">Latest</SelectItem>
+                                    <SelectItem value="render_preset_a">Preset A</SelectItem>
+                                    <SelectItem value="render_preset_b">Preset B</SelectItem>
+                                    <SelectItem value="render_preset_c">Preset C</SelectItem>
+                                    <SelectItem value="render_preset_d">Preset D</SelectItem>
+                                    <SelectItem value="render_preset_e">Preset E</SelectItem>
+                                    <SelectItem value="render_preset_f">Preset F</SelectItem>
+                                    <SelectItem value="render_preset_g">Preset G</SelectItem>
+                                    <SelectItem value="render_preset_h">Preset H</SelectItem>
+                                    <SelectItem value="render_preset_i">Preset I</SelectItem>
+                                    <SelectItem value="render_preset_j">Preset J</SelectItem>
+                                    <SelectItem value="render_preset_k">Preset K (Best)</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </SettingRow>
+
+                        <SettingRow label="Multi-Frame Generation" description="Number of generated frames">
+                            <Select
+                                value={profile.dlss.fg_multi_frame || "default"}
+                                onValueChange={(v) => updateNested("dlss", "fg_multi_frame", v === "default" ? null : v)}
+                            >
+                                <SelectTrigger className="w-32">
+                                    <SelectValue placeholder="Default" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="default">Default</SelectItem>
+                                    <SelectItem value="MAX">Max</SelectItem>
+                                    <SelectItem value="1">1</SelectItem>
+                                    <SelectItem value="2">2</SelectItem>
+                                    <SelectItem value="3">3</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </SettingRow>
+                    </SettingsSection>
+
+                    <Separator />
+
                     {/* Gamescope */}
                     <SettingsSection title="Gamescope" icon={<Gamepad2 className="w-4 h-4" />}>
-                        <SettingRow label="Enable Gamescope" description="Use Gamescope compositor for scaling/HDR">
+                        <SettingRow label="Enable Gamescope" description="Use Gamescope compositor">
                             <Switch
                                 checked={profile.wrappers.gamescope.enabled}
                                 onCheckedChange={(v) => {
@@ -587,7 +709,109 @@ export function MainPanel({ selectedGame, onProfileSaved }: MainPanelProps) {
 
                         {profile.wrappers.gamescope.enabled && (
                             <>
-                                <SettingRow label="Upscale Filter" description="Scaling algorithm (FSR, NIS, etc)">
+                                <SettingRow
+                                    label="DSR Mode"
+                                    description="Dynamic Super Resolution (render at higher res)"
+                                    tooltip="Renders game at higher resolution then downscales for better quality"
+                                >
+                                    <Switch
+                                        checked={profile.wrappers.gamescope.dsr_enabled}
+                                        onCheckedChange={(v) => {
+                                            setProfile((prev) => ({
+                                                ...prev,
+                                                wrappers: {
+                                                    ...prev.wrappers,
+                                                    gamescope: { ...prev.wrappers.gamescope, dsr_enabled: v },
+                                                },
+                                            }));
+                                            setHasChanges(true);
+                                        }}
+                                    />
+                                </SettingRow>
+
+                                {profile.wrappers.gamescope.dsr_enabled && (
+                                    <SettingRow label="DSR Resolution" description="Internal render resolution (width × height)">
+                                        <div className="flex gap-2 items-center">
+                                            <input
+                                                type="number"
+                                                value={profile.wrappers.gamescope.dsr_width || ""}
+                                                onChange={(e) => {
+                                                    const val = e.target.value ? parseInt(e.target.value) : null;
+                                                    setProfile((prev) => ({
+                                                        ...prev,
+                                                        wrappers: {
+                                                            ...prev.wrappers,
+                                                            gamescope: { ...prev.wrappers.gamescope, dsr_width: val },
+                                                        },
+                                                    }));
+                                                    setHasChanges(true);
+                                                }}
+                                                className="w-20 bg-background border border-input px-2 py-1.5 text-sm"
+                                                placeholder="2560"
+                                            />
+                                            <span className="text-muted-foreground">×</span>
+                                            <input
+                                                type="number"
+                                                value={profile.wrappers.gamescope.dsr_height || ""}
+                                                onChange={(e) => {
+                                                    const val = e.target.value ? parseInt(e.target.value) : null;
+                                                    setProfile((prev) => ({
+                                                        ...prev,
+                                                        wrappers: {
+                                                            ...prev.wrappers,
+                                                            gamescope: { ...prev.wrappers.gamescope, dsr_height: val },
+                                                        },
+                                                    }));
+                                                    setHasChanges(true);
+                                                }}
+                                                className="w-20 bg-background border border-input px-2 py-1.5 text-sm"
+                                                placeholder="1440"
+                                            />
+                                        </div>
+                                    </SettingRow>
+                                )}
+
+                                <SettingRow label="Output Resolution" description="Display output resolution (width × height)">
+                                    <div className="flex gap-2 items-center">
+                                        <input
+                                            type="number"
+                                            value={profile.wrappers.gamescope.width || ""}
+                                            onChange={(e) => {
+                                                const val = e.target.value ? parseInt(e.target.value) : null;
+                                                setProfile((prev) => ({
+                                                    ...prev,
+                                                    wrappers: {
+                                                        ...prev.wrappers,
+                                                        gamescope: { ...prev.wrappers.gamescope, width: val },
+                                                    },
+                                                }));
+                                                setHasChanges(true);
+                                            }}
+                                            className="w-20 bg-background border border-input px-2 py-1.5 text-sm"
+                                            placeholder="1920"
+                                        />
+                                        <span className="text-muted-foreground">×</span>
+                                        <input
+                                            type="number"
+                                            value={profile.wrappers.gamescope.height || ""}
+                                            onChange={(e) => {
+                                                const val = e.target.value ? parseInt(e.target.value) : null;
+                                                setProfile((prev) => ({
+                                                    ...prev,
+                                                    wrappers: {
+                                                        ...prev.wrappers,
+                                                        gamescope: { ...prev.wrappers.gamescope, height: val },
+                                                    },
+                                                }));
+                                                setHasChanges(true);
+                                            }}
+                                            className="w-20 bg-background border border-input px-2 py-1.5 text-sm"
+                                            placeholder="1080"
+                                        />
+                                    </div>
+                                </SettingRow>
+
+                                <SettingRow label="Upscale Filter" description="Scaling algorithm">
                                     <Select
                                         value={profile.wrappers.gamescope.upscale_filter || "fsr"}
                                         onValueChange={(v) => {
@@ -630,7 +854,7 @@ export function MainPanel({ selectedGame, onProfileSaved }: MainPanelProps) {
                                     />
                                 </SettingRow>
 
-                                <SettingRow label="VRR/Adaptive Sync" description="Enable variable refresh rate">
+                                <SettingRow label="VRR / Adaptive Sync" description="Variable refresh rate">
                                     <Switch
                                         checked={profile.wrappers.gamescope.vrr}
                                         onCheckedChange={(v) => {
@@ -683,12 +907,12 @@ export function MainPanel({ selectedGame, onProfileSaved }: MainPanelProps) {
                             />
                         </SettingRow>
 
-                        <SettingRow label="HUD" description="DXVK performance overlay options">
+                        <SettingRow label="HUD" description="DXVK performance overlay">
                             <Select
                                 value={profile.dxvk.hud || "off"}
                                 onValueChange={(v) => updateNested("dxvk", "hud", v === "off" ? null : v)}
                             >
-                                <SelectTrigger className="w-48">
+                                <SelectTrigger className="w-40">
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
@@ -730,16 +954,25 @@ function SettingsSection({
 function SettingRow({
     label,
     description,
+    tooltip,
     children,
 }: {
     label: string;
     description: string;
+    tooltip?: string;
     children: React.ReactNode;
 }) {
     return (
         <div className="flex items-center justify-between py-2">
             <div>
-                <div className="text-sm font-medium">{label}</div>
+                <div className="flex items-center gap-1">
+                    <span className="text-sm font-medium">{label}</span>
+                    {tooltip && (
+                        <Tooltip text={tooltip}>
+                            <HelpCircle className="w-3 h-3 text-muted-foreground" />
+                        </Tooltip>
+                    )}
+                </div>
                 <div className="text-xs text-muted-foreground">{description}</div>
             </div>
             {children}
