@@ -1,9 +1,8 @@
 import { useState, useEffect } from "react";
 import { GameProfile, listTemplateProfiles, saveProfile, deleteProfile, duplicateProfile } from "@/lib/api";
-import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Plus, Trash2, Copy, Save, Edit2 } from "lucide-react";
+import { Plus, Trash2, Copy, Save } from "lucide-react";
 
 interface ProfileManagerPanelProps {
     onSelectTemplate?: (profile: GameProfile) => void;
@@ -11,7 +10,6 @@ interface ProfileManagerPanelProps {
 
 export function ProfileManagerPanel({ onSelectTemplate }: ProfileManagerPanelProps) {
     const [templates, setTemplates] = useState<GameProfile[]>([]);
-    const [editingProfile, setEditingProfile] = useState<GameProfile | null>(null);
     const [newProfileName, setNewProfileName] = useState("");
     const [newProfileDesc, setNewProfileDesc] = useState("");
     const [isCreating, setIsCreating] = useState(false);
@@ -114,6 +112,12 @@ export function ProfileManagerPanel({ onSelectTemplate }: ProfileManagerPanelPro
             },
             custom_env: {},
             custom_args: null,
+            screen: {
+                target_monitor: null,
+                fullscreen_on_target: false,
+                disable_other_monitors: false,
+                restore_monitors_after_exit: true,
+            },
         };
 
         try {

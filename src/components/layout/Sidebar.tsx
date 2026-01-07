@@ -2,12 +2,15 @@ import { useEffect, useState, useMemo, useCallback } from "react";
 import { Game, GameProfile, detectGames, listProfiles } from "@/lib/api";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { GpuMonitor } from "./GpuMonitor";
-import { Search, RefreshCw, Settings2 } from "lucide-react";
+import { Search, RefreshCw, Settings2, Monitor, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface SidebarProps {
     selectedGame: Game | null;
     onSelectGame: (game: Game | null) => void;
+    activePanel?: "game" | "global" | "screen" | "profiles";
+    onSelectScreen?: () => void;
+    onSelectProfiles?: () => void;
     profilesVersion?: number;
 }
 
@@ -35,7 +38,7 @@ function shouldFilterGame(name: string): boolean {
     return IGNORED_PATTERNS.some(pattern => pattern.test(name));
 }
 
-export function Sidebar({ selectedGame, onSelectGame, profilesVersion }: SidebarProps) {
+export function Sidebar({ selectedGame, onSelectGame, activePanel = "global", onSelectScreen, onSelectProfiles, profilesVersion }: SidebarProps) {
     const [games, setGames] = useState<Game[]>([]);
     const [profiles, setProfiles] = useState<GameProfile[]>([]);
     const [loading, setLoading] = useState(true);
@@ -102,15 +105,45 @@ export function Sidebar({ selectedGame, onSelectGame, profilesVersion }: Sidebar
             <GpuMonitor />
 
             {/* Navigation */}
-            <div className="p-2 border-b border-border">
+            <div className="p-2 border-b border-border space-y-1">
                 <Button
                     variant="ghost"
                     size="sm"
-                    className="w-full justify-start"
+                    className={`w-full justify-start ${
+                        selectedGame === null && activePanel === "screen"
+                            ? "bg-nvidia/20 border-l-2 border-nvidia"
+                            : ""
+                    }`}
+                    onClick={() => onSelectScreen?.()}
+                >
+                    <Monitor className="w-4 h-4 mr-2" />
+                    Screen Settings
+                </Button>
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    className={`w-full justify-start ${
+                        selectedGame === null && activePanel === "global"
+                            ? "bg-nvidia/20 border-l-2 border-nvidia"
+                            : ""
+                    }`}
                     onClick={() => onSelectGame(null)}
                 >
                     <Settings2 className="w-4 h-4 mr-2" />
-                    Global Settings
+                    Global Profile
+                </Button>
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    className={`w-full justify-start ${
+                        activePanel === "profiles"
+                            ? "bg-nvidia/20 border-l-2 border-nvidia"
+                            : ""
+                    }`}
+                    onClick={() => onSelectProfiles?.()}
+                >
+                    <Layers className="w-4 h-4 mr-2" />
+                    Profile Templates
                 </Button>
             </div>
 
