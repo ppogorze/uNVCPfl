@@ -66,6 +66,18 @@ pub struct ProtonSettings {
     pub sync_mode: Option<String>, // "default", "esync", "fsync", "ntsync"
     #[serde(default)]
     pub enable_wayland: bool,
+    #[serde(default)]
+    pub enable_hdr: bool, // PROTON_ENABLE_HDR=1
+    #[serde(default)]
+    pub integer_scaling: bool, // WINE_FULLSCREEN_INTEGER_SCALING=1
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct FrameLimiterSettings {
+    #[serde(default)]
+    pub enabled: bool,
+    pub target_fps: Option<u32>,          // DXVK_FRAME_RATE / VKD3D_FRAME_RATE
+    pub swapchain_latency: Option<u32>,   // VKD3D_SWAPCHAIN_LATENCY_FRAMES
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -117,12 +129,35 @@ pub struct WrapperSettings {
     pub dlss_swapper: bool,
     #[serde(default)]
     pub gamescope: GamescopeSettings,
+    #[serde(default)]
+    pub frame_limiter: FrameLimiterSettings,
     pub lact_profile: Option<String>, // LACT GPU profile name
+    #[serde(default = "default_true")]
+    pub lact_restore_after_exit: bool, // Restore previous LACT profile after game exit
+}
+
+/// Settings for per-game screen/monitor configuration (Hyprland/Sway)
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ScreenSettings {
+    pub target_monitor: Option<String>,      // Monitor name for game (e.g., "DP-1")
+    #[serde(default)]
+    pub fullscreen_on_target: bool,          // Force fullscreen on target monitor
+    #[serde(default)]
+    pub disable_other_monitors: bool,        // Turn off other monitors during gameplay
+    #[serde(default = "default_true")]
+    pub restore_monitors_after_exit: bool,   // Restore monitors after game exit
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GameProfile {
     pub name: String,
+    pub description: Option<String>,       // User-provided description
+    #[serde(default)]
+    pub is_template: bool,                  // True if this is a reusable template, not game-bound
     pub executable_match: Option<String>,
     pub steam_appid: Option<u32>,
 
@@ -138,6 +173,8 @@ pub struct GameProfile {
     pub proton: ProtonSettings,
     #[serde(default)]
     pub wrappers: WrapperSettings,
+    #[serde(default)]
+    pub screen: ScreenSettings,
 
     #[serde(default)]
     pub custom_env: HashMap<String, String>,
@@ -148,6 +185,8 @@ impl Default for GameProfile {
     fn default() -> Self {
         Self {
             name: String::new(),
+            description: None,
+            is_template: false,
             executable_match: None,
             steam_appid: None,
             dlss: DlssSettings::default(),
@@ -156,6 +195,7 @@ impl Default for GameProfile {
             nvidia: NvidiaSettings::default(),
             proton: ProtonSettings::default(),
             wrappers: WrapperSettings::default(),
+            screen: ScreenSettings::default(),
             custom_env: HashMap::new(),
             custom_args: None,
         }
@@ -233,6 +273,42 @@ impl ProfileManager {
         let path = self.profiles_dir.join(filename);
 
         fs::remove_file(&path).map_err(|e| format!("Failed to delete profile: {}", e))
+    }
+
+    /// Duplicate an existing profile with a new name
+    pub fn duplicate_profile(&self, source_name: &str, new_name: &str) -> Result<(), String> {
+        let mut profile = self
+            .get_profile(source_name)
+            .ok_or_else(|| format!("Profile '{}' not found", source_name))?;
+
+        profile.name = new_name.to_string();
+        // Clear game-specific bindings when duplicating
+        profile.executable_match = None;
+        profile.steam_appid = None;
+        profile.is_template = true;
+
+        self.save_profile(&profile)
+    }
+
+    /// List only template profiles (is_template = true)
+    pub fn list_template_profiles(&self) -> Vec<GameProfile> {
+        self.list_profiles()
+            .into_iter()
+            .filter(|p| p.is_template)
+            .collect()
+    }
+
+    /// Apply a template to a game profile
+    pub fn apply_template(&self, template_name: &str, game_name: &str) -> Result<GameProfile, String> {
+        let template = self
+            .get_profile(template_name)
+            .ok_or_else(|| format!("Template '{}' not found", template_name))?;
+
+        let mut profile = template.clone();
+        profile.name = game_name.to_string();
+        profile.is_template = false;
+
+        Ok(profile)
     }
 
     /// Generate environment variables from a profile
@@ -374,6 +450,25 @@ impl ProfileManager {
 
         if profile.proton.enable_wayland {
             env.insert("PROTON_ENABLE_WAYLAND".to_string(), "1".to_string());
+        }
+
+        // HDR and integer scaling
+        if profile.proton.enable_hdr {
+            env.insert("PROTON_ENABLE_HDR".to_string(), "1".to_string());
+        }
+        if profile.proton.integer_scaling {
+            env.insert("WINE_FULLSCREEN_INTEGER_SCALING".to_string(), "1".to_string());
+        }
+
+        // Frame limiter (applies to both DXVK and VKD3D)
+        if profile.wrappers.frame_limiter.enabled {
+            if let Some(fps) = profile.wrappers.frame_limiter.target_fps {
+                env.insert("DXVK_FRAME_RATE".to_string(), fps.to_string());
+                env.insert("VKD3D_FRAME_RATE".to_string(), fps.to_string());
+            }
+            if let Some(latency) = profile.wrappers.frame_limiter.swapchain_latency {
+                env.insert("VKD3D_SWAPCHAIN_LATENCY_FRAMES".to_string(), latency.to_string());
+            }
         }
 
         // MangoHud fps limiter

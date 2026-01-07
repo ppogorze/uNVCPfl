@@ -64,6 +64,14 @@ export interface ProtonSettings {
     verb: string | null;
     sync_mode: string | null;  // "default", "esync", "fsync", "ntsync"
     enable_wayland: boolean;
+    enable_hdr: boolean;
+    integer_scaling: boolean;
+}
+
+export interface FrameLimiterSettings {
+    enabled: boolean;
+    target_fps: number | null;
+    swapchain_latency: number | null;
 }
 
 export interface GamescopeSettings {
@@ -98,11 +106,36 @@ export interface WrapperSettings {
     game_performance: boolean;
     dlss_swapper: boolean;
     gamescope: GamescopeSettings;
+    frame_limiter: FrameLimiterSettings;
     lact_profile: string | null;
+    lact_restore_after_exit: boolean;
+}
+
+export interface ScreenSettings {
+    target_monitor: string | null;
+    fullscreen_on_target: boolean;
+    disable_other_monitors: boolean;
+    restore_monitors_after_exit: boolean;
+}
+
+export interface Monitor {
+    id: number;
+    name: string;
+    description: string;
+    width: number;
+    height: number;
+    refresh_rate: number;
+    x: number;
+    y: number;
+    scale: number;
+    active: boolean;
+    focused: boolean;
 }
 
 export interface GameProfile {
     name: string;
+    description: string | null;
+    is_template: boolean;
     executable_match: string | null;
     steam_appid: number | null;
     dlss: DlssSettings;
@@ -111,6 +144,7 @@ export interface GameProfile {
     nvidia: NvidiaSettings;
     proton: ProtonSettings;
     wrappers: WrapperSettings;
+    screen: ScreenSettings;
     custom_env: Record<string, string>;
     custom_args: string | null;
 }
@@ -162,6 +196,18 @@ export async function deleteProfile(name: string): Promise<void> {
     return invoke<void>("delete_profile", { name });
 }
 
+export async function duplicateProfile(sourceName: string, newName: string): Promise<void> {
+    return invoke<void>("duplicate_profile", { sourceName, newName });
+}
+
+export async function listTemplateProfiles(): Promise<GameProfile[]> {
+    return invoke<GameProfile[]>("list_template_profiles");
+}
+
+export async function applyTemplate(templateName: string, gameName: string): Promise<GameProfile> {
+    return invoke<GameProfile>("apply_template", { templateName, gameName });
+}
+
 export async function buildEnvVars(profile: GameProfile): Promise<Record<string, string>> {
     return invoke<Record<string, string>>("build_env_vars", { profile });
 }
@@ -177,6 +223,39 @@ export async function isLactAvailable(): Promise<boolean> {
 
 export async function getLactProfiles(): Promise<string[]> {
     return invoke<string[]>("get_lact_profiles");
+}
+
+// Screen Configuration Commands
+export async function detectCompositor(): Promise<string> {
+    return invoke<string>("detect_compositor");
+}
+
+export async function getCompositorName(): Promise<string> {
+    return invoke<string>("get_compositor_name");
+}
+
+export async function listMonitors(): Promise<Monitor[]> {
+    return invoke<Monitor[]>("list_monitors");
+}
+
+export async function isScreenConfigSupported(): Promise<boolean> {
+    return invoke<boolean>("is_screen_config_supported");
+}
+
+export async function disableMonitor(name: string): Promise<void> {
+    return invoke<void>("disable_monitor", { name });
+}
+
+export async function enableMonitor(name: string, config: string): Promise<void> {
+    return invoke<void>("enable_monitor", { name, config });
+}
+
+export async function setGameMonitorRule(windowClass: string, monitorName: string): Promise<void> {
+    return invoke<void>("set_game_monitor_rule", { windowClass, monitorName });
+}
+
+export async function getMonitorConfigs(): Promise<Record<string, string>> {
+    return invoke<Record<string, string>>("get_monitor_configs");
 }
 
 // System Info

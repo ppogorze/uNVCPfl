@@ -45,6 +45,11 @@ else
     fi
 fi
 
+# LACT profile handling
+PREVIOUS_LACT_PROFILE=""
+LACT_PROFILE=""
+LACT_RESTORE="true"
+
 # Apply profile if found
 if [[ -f "$PROFILE_FILE" ]]; then
     echo "[unvcpfl] Loading profile: $PROFILE_FILE" >&2
@@ -54,11 +59,8 @@ if [[ -f "$PROFILE_FILE" ]]; then
         # Use the Rust CLI helper for reliable TOML parsing
         eval "$($CLI_CMD env "$PROFILE_FILE")"
         WRAPPER_CMD=$($CLI_CMD wrappers "$PROFILE_FILE")
-        
-        if [[ -n "$WRAPPER_CMD" ]]; then
-            echo "[unvcpfl] Wrappers: $WRAPPER_CMD" >&2
-            exec $WRAPPER_CMD "${COMMAND[@]}"
-        fi
+        LACT_PROFILE=$($CLI_CMD lact-profile "$PROFILE_FILE" 2>/dev/null || echo "")
+        LACT_RESTORE=$($CLI_CMD lact-restore "$PROFILE_FILE" 2>/dev/null || echo "true")
     else
         # Fallback: Basic TOML parsing with grep/sed
         echo "[unvcpfl] CLI helper not found, using basic parsing" >&2
@@ -70,6 +72,9 @@ if [[ -f "$PROFILE_FILE" ]]; then
         if grep -q 'indicator = true' "$PROFILE_FILE" 2>/dev/null; then
             export PROTON_DLSS_INDICATOR=1
         fi
+        if grep -q 'ngx_updater = true' "$PROFILE_FILE" 2>/dev/null; then
+            export PROTON_ENABLE_NGX_UPDATER=1
+        fi
         
         # DXVK settings
         if grep -q 'nvapi = true' "$PROFILE_FILE" 2>/dev/null; then
@@ -79,6 +84,14 @@ if [[ -f "$PROFILE_FILE" ]]; then
             export DXVK_ASYNC=1
         fi
         
+        # HDR and scaling
+        if grep -q 'enable_hdr = true' "$PROFILE_FILE" 2>/dev/null; then
+            export PROTON_ENABLE_HDR=1
+        fi
+        if grep -q 'integer_scaling = true' "$PROFILE_FILE" 2>/dev/null; then
+            export WINE_FULLSCREEN_INTEGER_SCALING=1
+        fi
+        
         # Proton settings
         if grep -q 'esync = false' "$PROFILE_FILE" 2>/dev/null; then
             export PROTON_NO_ESYNC=1
@@ -86,14 +99,33 @@ if [[ -f "$PROFILE_FILE" ]]; then
         if grep -q 'fsync = false' "$PROFILE_FILE" 2>/dev/null; then
             export PROTON_NO_FSYNC=1
         fi
+        if grep -q 'enable_wayland = true' "$PROFILE_FILE" 2>/dev/null; then
+            export PROTON_ENABLE_WAYLAND=1
+        fi
+        
+        # Frame limiter
+        FPS_LIMIT=$(grep -oP 'target_fps = \K\d+' "$PROFILE_FILE" 2>/dev/null || true)
+        if [[ -n "$FPS_LIMIT" ]]; then
+            export DXVK_FRAME_RATE=$FPS_LIMIT
+            export VKD3D_FRAME_RATE=$FPS_LIMIT
+        fi
+        
+        # LACT profile (basic extraction)
+        LACT_PROFILE=$(grep -oP 'lact_profile = "\K[^"]+' "$PROFILE_FILE" 2>/dev/null || true)
+        if grep -q 'lact_restore_after_exit = false' "$PROFILE_FILE" 2>/dev/null; then
+            LACT_RESTORE="false"
+        fi
         
         # Wrappers
         WRAPPERS=""
-        if grep -q 'mangohud = true' "$PROFILE_FILE" 2>/dev/null; then
+        if grep -q 'mangohud.*enabled = true' "$PROFILE_FILE" 2>/dev/null || grep -q '\[wrappers.mangohud\]' "$PROFILE_FILE" && grep -A5 '\[wrappers.mangohud\]' "$PROFILE_FILE" | grep -q 'enabled = true'; then
             WRAPPERS="$WRAPPERS mangohud"
         fi
         if grep -q 'gamemode = true' "$PROFILE_FILE" 2>/dev/null; then
             WRAPPERS="$WRAPPERS gamemoderun"
+        fi
+        if grep -q 'game_performance = true' "$PROFILE_FILE" 2>/dev/null; then
+            WRAPPERS="$WRAPPERS game-performance"
         fi
         if grep -q 'dlss_swapper = true' "$PROFILE_FILE" 2>/dev/null; then
             WRAPPERS="$WRAPPERS dlss-swapper"
@@ -101,12 +133,113 @@ if [[ -f "$PROFILE_FILE" ]]; then
         
         if [[ -n "$WRAPPERS" ]]; then
             echo "[unvcpfl] Wrappers:$WRAPPERS" >&2
-            exec $WRAPPERS "${COMMAND[@]}"
+            WRAPPER_CMD="$WRAPPERS"
         fi
+    fi
+    
+    # LACT profile switching with restore support
+    if [[ -n "$LACT_PROFILE" ]] && command -v lact &>/dev/null; then
+        # Save current profile for restoration
+        if [[ "$LACT_RESTORE" == "true" ]]; then
+            PREVIOUS_LACT_PROFILE=$(lact cli profile current 2>/dev/null || echo "")
+            echo "[unvcpfl] Saved current LACT profile: $PREVIOUS_LACT_PROFILE" >&2
+        fi
+        
+        # Apply game profile
+        echo "[unvcpfl] Setting LACT profile: $LACT_PROFILE" >&2
+        lact cli profile set "$LACT_PROFILE" 2>/dev/null || true
+    fi
+    
+    if [[ -n "$WRAPPER_CMD" ]]; then
+        echo "[unvcpfl] Wrappers: $WRAPPER_CMD" >&2
     fi
 else
     echo "[unvcpfl] No profile found for: $EXE_NAME" >&2
 fi
 
-# Execute the game
-exec "${COMMAND[@]}"
+# Screen configuration (Hyprland/Sway)
+TARGET_MONITOR=""
+DISABLE_OTHER_MONITORS="false"
+RESTORE_MONITORS="true"
+SAVED_MONITORS=""
+
+# Parse screen settings if using CLI
+if command -v "$CLI_CMD" &>/dev/null && [[ -f "$PROFILE_FILE" ]]; then
+    TARGET_MONITOR=$($CLI_CMD screen-target "$PROFILE_FILE" 2>/dev/null || echo "")
+    DISABLE_OTHER_MONITORS=$($CLI_CMD screen-disable-others "$PROFILE_FILE" 2>/dev/null || echo "false")
+    RESTORE_MONITORS=$($CLI_CMD screen-restore "$PROFILE_FILE" 2>/dev/null || echo "true")
+fi
+
+# Hyprland screen configuration
+if [[ -n "$TARGET_MONITOR" ]] || [[ "$DISABLE_OTHER_MONITORS" == "true" ]]; then
+    if [[ -n "$HYPRLAND_INSTANCE_SIGNATURE" ]]; then
+        # We're in Hyprland
+        if [[ "$DISABLE_OTHER_MONITORS" == "true" ]] && [[ -n "$TARGET_MONITOR" ]]; then
+            # Save current monitor configurations
+            SAVED_MONITORS=$(hyprctl monitors -j 2>/dev/null)
+            echo "[unvcpfl] Saved monitor configurations for restoration" >&2
+            
+            # Disable all monitors except target
+            for mon in $(echo "$SAVED_MONITORS" | grep -o '"name":"[^"]*"' | cut -d'"' -f4); do
+                if [[ "$mon" != "$TARGET_MONITOR" ]]; then
+                    echo "[unvcpfl] Disabling monitor: $mon" >&2
+                    hyprctl keyword monitor "$mon,disable" >/dev/null 2>&1 || true
+                fi
+            done
+        fi
+    elif [[ -n "$SWAYSOCK" ]]; then
+        # We're in Sway
+        if [[ "$DISABLE_OTHER_MONITORS" == "true" ]] && [[ -n "$TARGET_MONITOR" ]]; then
+            SAVED_MONITORS=$(swaymsg -t get_outputs -r 2>/dev/null)
+            echo "[unvcpfl] Saved monitor configurations for restoration" >&2
+            
+            for mon in $(echo "$SAVED_MONITORS" | grep -o '"name":"[^"]*"' | cut -d'"' -f4); do
+                if [[ "$mon" != "$TARGET_MONITOR" ]]; then
+                    echo "[unvcpfl] Disabling monitor: $mon" >&2
+                    swaymsg output "$mon" disable >/dev/null 2>&1 || true
+                fi
+            done
+        fi
+    fi
+fi
+
+# Execute the game and capture exit code
+if [[ -n "$WRAPPER_CMD" ]]; then
+    $WRAPPER_CMD "${COMMAND[@]}"
+    EXIT_CODE=$?
+else
+    "${COMMAND[@]}"
+    EXIT_CODE=$?
+fi
+
+# Restore LACT profile after game exit
+if [[ -n "$PREVIOUS_LACT_PROFILE" ]] && [[ "$LACT_RESTORE" == "true" ]]; then
+    echo "[unvcpfl] Restoring LACT profile: $PREVIOUS_LACT_PROFILE" >&2
+    lact cli profile set "$PREVIOUS_LACT_PROFILE" 2>/dev/null || true
+fi
+
+# Restore monitors after game exit (Hyprland/Sway)
+if [[ -n "$SAVED_MONITORS" ]] && [[ "$RESTORE_MONITORS" == "true" ]]; then
+    echo "[unvcpfl] Restoring monitor configurations" >&2
+    
+    if [[ -n "$HYPRLAND_INSTANCE_SIGNATURE" ]]; then
+        # Re-enable each monitor with saved configuration
+        for mon in $(echo "$SAVED_MONITORS" | grep -o '"name":"[^"]*"' | cut -d'"' -f4); do
+            if [[ "$mon" != "$TARGET_MONITOR" ]]; then
+                # Get original width, height, refresh rate, pos from saved data
+                # This is simplified - CLI helper should handle this better
+                hyprctl keyword monitor "$mon,preferred,auto,1" >/dev/null 2>&1 || true
+                echo "[unvcpfl] Re-enabled monitor: $mon" >&2
+            fi
+        done
+    elif [[ -n "$SWAYSOCK" ]]; then
+        for mon in $(echo "$SAVED_MONITORS" | grep -o '"name":"[^"]*"' | cut -d'"' -f4); do
+            if [[ "$mon" != "$TARGET_MONITOR" ]]; then
+                swaymsg output "$mon" enable >/dev/null 2>&1 || true
+                echo "[unvcpfl] Re-enabled monitor: $mon" >&2
+            fi
+        done
+    fi
+fi
+
+exit $EXIT_CODE

@@ -1,10 +1,12 @@
 mod games;
 mod nvidia;
 mod profiles;
+mod screen;
 
 use games::{Game, GameDetector};
 use nvidia::{create_gpu_state, GpuInfo, SharedGpuState};
 use profiles::{GameProfile, ProfileManager};
+use screen::{Compositor, Monitor};
 use std::sync::Arc;
 use tauri::State;
 
@@ -80,6 +82,29 @@ fn delete_profile(state: State<'_, Arc<ProfileManager>>, name: String) -> Result
 }
 
 #[tauri::command]
+fn duplicate_profile(
+    state: State<'_, Arc<ProfileManager>>,
+    source_name: String,
+    new_name: String,
+) -> Result<(), String> {
+    state.duplicate_profile(&source_name, &new_name)
+}
+
+#[tauri::command]
+fn list_template_profiles(state: State<'_, Arc<ProfileManager>>) -> Vec<GameProfile> {
+    state.list_template_profiles()
+}
+
+#[tauri::command]
+fn apply_template(
+    state: State<'_, Arc<ProfileManager>>,
+    template_name: String,
+    game_name: String,
+) -> Result<GameProfile, String> {
+    state.apply_template(&template_name, &game_name)
+}
+
+#[tauri::command]
 fn build_env_vars(
     state: State<'_, Arc<ProfileManager>>,
     profile: GameProfile,
@@ -100,6 +125,48 @@ fn is_lact_available() -> bool {
 #[tauri::command]
 fn get_lact_profiles() -> Vec<String> {
     profiles::get_lact_profiles()
+}
+
+// Screen configuration commands
+#[tauri::command]
+fn detect_compositor() -> Compositor {
+    screen::detect_compositor()
+}
+
+#[tauri::command]
+fn get_compositor_name() -> String {
+    let compositor = screen::detect_compositor();
+    screen::compositor_name(compositor).to_string()
+}
+
+#[tauri::command]
+fn list_monitors() -> Result<Vec<Monitor>, String> {
+    screen::list_monitors()
+}
+
+#[tauri::command]
+fn is_screen_config_supported() -> bool {
+    screen::is_screen_config_supported()
+}
+
+#[tauri::command]
+fn disable_monitor(name: String) -> Result<(), String> {
+    screen::disable_monitor(&name)
+}
+
+#[tauri::command]
+fn enable_monitor(name: String, config: String) -> Result<(), String> {
+    screen::enable_monitor(&name, &config)
+}
+
+#[tauri::command]
+fn set_game_monitor_rule(window_class: String, monitor_name: String) -> Result<(), String> {
+    screen::set_game_monitor_rule(&window_class, &monitor_name)
+}
+
+#[tauri::command]
+fn get_monitor_configs() -> Result<std::collections::HashMap<String, String>, String> {
+    screen::get_monitor_configs()
 }
 
 #[tauri::command]
@@ -181,11 +248,23 @@ pub fn run() {
             get_profile_by_executable,
             save_profile,
             delete_profile,
+            duplicate_profile,
+            list_template_profiles,
+            apply_template,
             build_env_vars,
             build_wrapper_cmd,
             // LACT integration
             is_lact_available,
             get_lact_profiles,
+            // Screen configuration
+            detect_compositor,
+            get_compositor_name,
+            list_monitors,
+            is_screen_config_supported,
+            disable_monitor,
+            enable_monitor,
+            set_game_monitor_rule,
+            get_monitor_configs,
             // System info
             get_hostname,
             create_desktop_entry,

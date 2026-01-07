@@ -22,6 +22,8 @@ function Tooltip({ children, text }: { children: React.ReactNode; text: string }
 // Default profile structure
 const createDefaultProfile = (game: Game | null): GameProfile => ({
     name: game?.name || "Global Settings",
+    description: null,
+    is_template: false,
     executable_match: game?.executable || null,
     steam_appid: game?.source === "Steam" ? parseInt(game.id) : null,
     dlss: {
@@ -59,6 +61,8 @@ const createDefaultProfile = (game: Game | null): GameProfile => ({
         verb: "waitforexitandrun",
         sync_mode: null,
         enable_wayland: false,
+        enable_hdr: false,
+        integer_scaling: false,
     },
     wrappers: {
         mangohud: {
@@ -88,7 +92,19 @@ const createDefaultProfile = (game: Game | null): GameProfile => ({
             mangoapp: false,
             hdr: false,
         },
+        frame_limiter: {
+            enabled: false,
+            target_fps: null,
+            swapchain_latency: null,
+        },
         lact_profile: null,
+        lact_restore_after_exit: true,
+    },
+    screen: {
+        target_monitor: null,
+        fullscreen_on_target: false,
+        disable_other_monitors: false,
+        restore_monitors_after_exit: true,
     },
     custom_env: {},
     custom_args: null,
@@ -151,6 +167,156 @@ function LactProfileSection({
                     </SelectContent>
                 </Select>
             </div>
+            {profile.wrappers.lact_profile && (
+                <div className="flex items-center justify-between mt-3 pt-3 border-t border-border">
+                    <div>
+                        <div className="text-sm font-medium">Restore Previous Profile</div>
+                        <div className="text-xs text-muted-foreground">Switch back to previous LACT profile after game exits</div>
+                    </div>
+                    <Switch
+                        checked={profile.wrappers.lact_restore_after_exit}
+                        onCheckedChange={(v) => {
+                            setProfile((prev) => ({
+                                ...prev,
+                                wrappers: { ...prev.wrappers, lact_restore_after_exit: v },
+                            }));
+                            setHasChanges(true);
+                        }}
+                    />
+                </div>
+            )}
+        </div>
+    );
+}
+
+// Screen Configuration Section Component
+function ScreenConfigSection({
+    profile,
+    setProfile,
+    setHasChanges
+}: {
+    profile: GameProfile;
+    setProfile: React.Dispatch<React.SetStateAction<GameProfile>>;
+    setHasChanges: React.Dispatch<React.SetStateAction<boolean>>;
+}) {
+    const [monitors, setMonitors] = useState<{ id: number; name: string; description: string; width: number; height: number; refresh_rate: number }[]>([]);
+    const [isSupported, setIsSupported] = useState(false);
+    const [compositorName, setCompositorName] = useState("");
+
+    useEffect(() => {
+        import("@/lib/api").then(api => {
+            api.isScreenConfigSupported().then(setIsSupported);
+            api.getCompositorName().then(setCompositorName);
+            api.listMonitors().then(setMonitors).catch(() => setMonitors([]));
+        });
+    }, []);
+
+    if (!isSupported) {
+        return (
+            <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 text-muted-foreground text-sm">
+                <Monitor className="w-4 h-4" />
+                <span>Screen configuration requires Hyprland or Sway</span>
+            </div>
+        );
+    }
+
+    return (
+        <div className="space-y-4">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Monitor className="w-4 h-4" />
+                <span>Compositor: {compositorName}</span>
+            </div>
+
+            {/* Target Monitor Selection */}
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                    <span className="text-sm">Target Monitor</span>
+                    <Tooltip text="Launch game on this monitor">
+                        <HelpCircle className="w-3.5 h-3.5 text-muted-foreground" />
+                    </Tooltip>
+                </div>
+                <Select
+                    value={profile.screen.target_monitor || "auto"}
+                    onValueChange={(v) => {
+                        setProfile(prev => ({
+                            ...prev,
+                            screen: { ...prev.screen, target_monitor: v === "auto" ? null : v }
+                        }));
+                        setHasChanges(true);
+                    }}
+                >
+                    <SelectTrigger className="w-48">
+                        <SelectValue placeholder="Auto" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="auto">Auto (Primary)</SelectItem>
+                        {monitors.map(m => (
+                            <SelectItem key={m.name} value={m.name}>
+                                {m.name} ({m.width}x{m.height}@{Math.round(m.refresh_rate)}Hz)
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            </div>
+
+            {/* Fullscreen on Target */}
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                    <span className="text-sm">Fullscreen on Target</span>
+                    <Tooltip text="Force fullscreen mode on target monitor">
+                        <HelpCircle className="w-3.5 h-3.5 text-muted-foreground" />
+                    </Tooltip>
+                </div>
+                <Switch
+                    checked={profile.screen.fullscreen_on_target}
+                    onCheckedChange={(v) => {
+                        setProfile(prev => ({
+                            ...prev,
+                            screen: { ...prev.screen, fullscreen_on_target: v }
+                        }));
+                        setHasChanges(true);
+                    }}
+                />
+            </div>
+
+            {/* Disable Other Monitors */}
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                    <span className="text-sm">Disable Other Monitors</span>
+                    <Tooltip text="Turn off other monitors during gameplay">
+                        <HelpCircle className="w-3.5 h-3.5 text-muted-foreground" />
+                    </Tooltip>
+                </div>
+                <Switch
+                    checked={profile.screen.disable_other_monitors}
+                    onCheckedChange={(v) => {
+                        setProfile(prev => ({
+                            ...prev,
+                            screen: { ...prev.screen, disable_other_monitors: v }
+                        }));
+                        setHasChanges(true);
+                    }}
+                />
+            </div>
+
+            {/* Restore After Exit */}
+            {profile.screen.disable_other_monitors && (
+                <div className="flex items-center justify-between ml-4 pt-2 border-t border-border/30">
+                    <div className="flex items-center gap-2">
+                        <span className="text-sm text-muted-foreground">Restore monitors after exit</span>
+                    </div>
+                    <Switch
+                        checked={profile.screen.restore_monitors_after_exit}
+                        onCheckedChange={(v) => {
+                            setProfile(prev => ({
+                                ...prev,
+                                screen: { ...prev.screen, restore_monitors_after_exit: v }
+                            }));
+                            setHasChanges(true);
+                        }}
+                    />
+                </div>
+            )}
         </div>
     );
 }
@@ -390,6 +556,11 @@ export function MainPanel({ selectedGame, onProfileSaved }: MainPanelProps) {
                     {/* LACT GPU Profile */}
                     <LactProfileSection profile={profile} setProfile={setProfile} setHasChanges={setHasChanges} />
 
+                    {/* Screen Configuration */}
+                    <SettingsSection title="Screen Configuration" icon={<Monitor className="w-4 h-4" />}>
+                        <ScreenConfigSection profile={profile} setProfile={setProfile} setHasChanges={setHasChanges} />
+                    </SettingsSection>
+
                     {/* NVIDIA GPU Settings */}
                     <SettingsSection title="NVIDIA GPU" icon={<Zap className="w-4 h-4" />}>
                         <SettingRow label="NVIDIA Prime" description="Force discrete GPU on hybrid systems">
@@ -474,6 +645,101 @@ export function MainPanel({ selectedGame, onProfileSaved }: MainPanelProps) {
                                 onCheckedChange={(v) => updateNested("proton", "enable_wayland", v)}
                             />
                         </SettingRow>
+
+                        <SettingRow
+                            label="HDR Support"
+                            description="Enable High Dynamic Range output"
+                            tooltip="PROTON_ENABLE_HDR=1"
+                        >
+                            <Switch
+                                checked={profile.proton.enable_hdr}
+                                onCheckedChange={(v) => updateNested("proton", "enable_hdr", v)}
+                            />
+                        </SettingRow>
+
+                        <SettingRow
+                            label="Integer Scaling"
+                            description="Pixel-perfect scaling for retro games"
+                            tooltip="WINE_FULLSCREEN_INTEGER_SCALING=1"
+                        >
+                            <Switch
+                                checked={profile.proton.integer_scaling}
+                                onCheckedChange={(v) => updateNested("proton", "integer_scaling", v)}
+                            />
+                        </SettingRow>
+                    </SettingsSection>
+
+                    <Separator />
+
+                    {/* Frame Limiter */}
+                    <SettingsSection title="Frame Limiter" icon={<Monitor className="w-4 h-4" />}>
+                        <SettingRow
+                            label="Enable Frame Limiter"
+                            description="Limit FPS at driver level (DXVK/VKD3D)"
+                            tooltip="Uses DXVK_FRAME_RATE and VKD3D_FRAME_RATE"
+                        >
+                            <Switch
+                                checked={profile.wrappers.frame_limiter.enabled}
+                                onCheckedChange={(v) => {
+                                    setProfile((prev) => ({
+                                        ...prev,
+                                        wrappers: {
+                                            ...prev.wrappers,
+                                            frame_limiter: { ...prev.wrappers.frame_limiter, enabled: v },
+                                        },
+                                    }));
+                                    setHasChanges(true);
+                                }}
+                            />
+                        </SettingRow>
+
+                        {profile.wrappers.frame_limiter.enabled && (
+                            <>
+                                <SettingRow label="Target FPS" description="Maximum frames per second">
+                                    <input
+                                        type="number"
+                                        value={profile.wrappers.frame_limiter.target_fps || ""}
+                                        onChange={(e) => {
+                                            const val = e.target.value ? parseInt(e.target.value) : null;
+                                            setProfile((prev) => ({
+                                                ...prev,
+                                                wrappers: {
+                                                    ...prev.wrappers,
+                                                    frame_limiter: { ...prev.wrappers.frame_limiter, target_fps: val },
+                                                },
+                                            }));
+                                            setHasChanges(true);
+                                        }}
+                                        className="w-24 bg-background border border-input px-3 py-1.5 text-sm"
+                                        placeholder="60"
+                                    />
+                                </SettingRow>
+
+                                <SettingRow
+                                    label="Swapchain Latency"
+                                    description="VKD3D swapchain latency frames (DX12 only)"
+                                    tooltip="VKD3D_SWAPCHAIN_LATENCY_FRAMES - Lower = less input lag"
+                                >
+                                    <input
+                                        type="number"
+                                        value={profile.wrappers.frame_limiter.swapchain_latency || ""}
+                                        onChange={(e) => {
+                                            const val = e.target.value ? parseInt(e.target.value) : null;
+                                            setProfile((prev) => ({
+                                                ...prev,
+                                                wrappers: {
+                                                    ...prev.wrappers,
+                                                    frame_limiter: { ...prev.wrappers.frame_limiter, swapchain_latency: val },
+                                                },
+                                            }));
+                                            setHasChanges(true);
+                                        }}
+                                        className="w-24 bg-background border border-input px-3 py-1.5 text-sm"
+                                        placeholder="1"
+                                    />
+                                </SettingRow>
+                            </>
+                        )}
                     </SettingsSection>
 
                     <Separator />
