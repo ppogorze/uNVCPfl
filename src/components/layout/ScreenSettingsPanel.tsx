@@ -19,9 +19,16 @@ interface MonitorSettings {
     x: number;
     y: number;
     refresh_rate: number;
+    actual_refresh_rate: number; // Original from monitor
     scale: number;
-    vrr: boolean;
+    vrr_mode: number; // 0=off, 1=always, 2=fullscreen only
 }
+
+const VRR_MODES = [
+    { value: 0, label: "Off" },
+    { value: 1, label: "Always On" },
+    { value: 2, label: "Fullscreen Only" },
+];
 
 const COMMON_RESOLUTIONS = [
     { width: 3840, height: 2160, label: "4K (3840×2160)" },
@@ -32,6 +39,15 @@ const COMMON_RESOLUTIONS = [
 ];
 
 const COMMON_REFRESH_RATES = [240, 165, 144, 120, 75, 60, 50, 30];
+
+// Helper to get unique refresh rates including actual
+function getRefreshRateOptions(actualRate: number): number[] {
+    const rates = new Set(COMMON_REFRESH_RATES);
+    // Add actual rate rounded to nearest integer
+    const roundedActual = Math.round(actualRate);
+    rates.add(roundedActual);
+    return Array.from(rates).sort((a, b) => b - a);
+}
 
 export function ScreenSettingsPanel() {
     const [monitors, setMonitors] = useState<Monitor[]>([]);
@@ -63,9 +79,10 @@ export function ScreenSettingsPanel() {
                 height: m.height,
                 x: m.x,
                 y: m.y,
-                refresh_rate: m.refresh_rate,
+                refresh_rate: Math.round(m.refresh_rate),
+                actual_refresh_rate: m.refresh_rate,
                 scale: m.scale,
-                vrr: false, // Default, would need to read from config
+                vrr_mode: 0, // Default off, would need to read from config
             })));
             if (mons.length > 0 && !selectedMonitor) {
                 setSelectedMonitor(mons[0].name);
@@ -294,7 +311,12 @@ export function ScreenSettingsPanel() {
 
                                 {/* Refresh Rate */}
                                 <div>
-                                    <label className="text-xs text-muted-foreground">Refresh Rate</label>
+                                    <label className="text-xs text-muted-foreground">
+                                        Refresh Rate
+                                        <span className="ml-1 text-[10px] text-muted-foreground/70">
+                                            (actual: {selectedSettings.actual_refresh_rate.toFixed(2)}Hz)
+                                        </span>
+                                    </label>
                                     <Select
                                         value={selectedSettings.refresh_rate.toString()}
                                         onValueChange={(v) => updateSetting(selectedMonitor!, 'refresh_rate', parseInt(v))}
@@ -303,7 +325,7 @@ export function ScreenSettingsPanel() {
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            {COMMON_REFRESH_RATES.map(r => (
+                                            {getRefreshRateOptions(selectedSettings.actual_refresh_rate).map(r => (
                                                 <SelectItem key={r} value={r.toString()}>
                                                     {r} Hz
                                                 </SelectItem>
@@ -333,15 +355,23 @@ export function ScreenSettingsPanel() {
                                 </div>
 
                                 {/* VRR */}
-                                <div className="flex items-center justify-between p-3 bg-muted/30 rounded">
-                                    <div>
-                                        <span className="text-sm">Variable Refresh Rate</span>
-                                        <p className="text-xs text-muted-foreground">VRR / Adaptive Sync</p>
-                                    </div>
-                                    <Switch
-                                        checked={selectedSettings.vrr}
-                                        onCheckedChange={(v) => updateSetting(selectedMonitor!, 'vrr', v)}
-                                    />
+                                <div>
+                                    <label className="text-xs text-muted-foreground">Variable Refresh Rate</label>
+                                    <Select
+                                        value={selectedSettings.vrr_mode.toString()}
+                                        onValueChange={(v) => updateSetting(selectedMonitor!, 'vrr_mode', parseInt(v))}
+                                    >
+                                        <SelectTrigger className="mt-1">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {VRR_MODES.map(mode => (
+                                                <SelectItem key={mode.value} value={mode.value.toString()}>
+                                                    {mode.label}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
                                 </div>
 
                                 {/* Position */}

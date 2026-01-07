@@ -616,15 +616,23 @@ function LaunchPreview({ profile, isSteamGame }: { profile: GameProfile; isSteam
 
 interface MainPanelProps {
     selectedGame: Game | null;
+    selectedProfile?: GameProfile | null;
     onProfileSaved?: () => void;
 }
 
-export function MainPanel({ selectedGame, onProfileSaved }: MainPanelProps) {
+export function MainPanel({ selectedGame, selectedProfile, onProfileSaved }: MainPanelProps) {
     const [profile, setProfile] = useState<GameProfile>(createDefaultProfile(selectedGame));
     const [hasChanges, setHasChanges] = useState(false);
     const [saving, setSaving] = useState(false);
 
     useEffect(() => {
+        // If a custom profile is selected, use it directly
+        if (selectedProfile) {
+            setProfile(selectedProfile);
+            setHasChanges(false);
+            return;
+        }
+        
         if (selectedGame) {
             getProfile(selectedGame.name).then((existing) => {
                 if (existing) {
@@ -638,7 +646,7 @@ export function MainPanel({ selectedGame, onProfileSaved }: MainPanelProps) {
             setProfile(createDefaultProfile(null));
             setHasChanges(false);
         }
-    }, [selectedGame]);
+    }, [selectedGame, selectedProfile]);
 
     const updateNested = <P extends keyof GameProfile, K extends keyof GameProfile[P]>(
         parent: P,
