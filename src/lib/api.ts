@@ -258,6 +258,30 @@ export async function getMonitorConfigs(): Promise<Record<string, string>> {
     return invoke<Record<string, string>>("get_monitor_configs");
 }
 
+// PCGamingWiki Game Data Paths Types
+export interface GamePath {
+    platform: string;
+    raw_path: string;
+    resolved_path: string;
+    exists: boolean;
+}
+
+export interface GameDataPaths {
+    game_name: string;
+    config_paths: GamePath[];
+    save_paths: GamePath[];
+    error: string | null;
+}
+
+// Game Data Paths Commands (PCGamingWiki)
+export async function getGameDataPaths(steamAppid: number): Promise<GameDataPaths> {
+    return invoke<GameDataPaths>("get_game_data_paths", { steamAppid });
+}
+
+export async function openGamePath(path: string, inEditor: boolean): Promise<void> {
+    return invoke<void>("open_game_path", { path, inEditor });
+}
+
 // System Info
 export async function getHostname(): Promise<string> {
     return invoke<string>("get_hostname");

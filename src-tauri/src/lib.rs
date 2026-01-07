@@ -1,4 +1,5 @@
 mod games;
+mod game_settings;
 mod nvidia;
 mod profiles;
 mod screen;
@@ -177,6 +178,20 @@ fn get_hostname() -> String {
 }
 
 #[tauri::command]
+async fn get_game_data_paths(steam_appid: u32) -> game_settings::GameDataPaths {
+    game_settings::fetch_pcgamingwiki_paths(steam_appid).await
+}
+
+#[tauri::command]
+fn open_game_path(path: String, in_editor: bool) -> Result<(), String> {
+    if in_editor {
+        game_settings::open_in_editor(&path)
+    } else {
+        game_settings::open_in_file_manager(&path)
+    }
+}
+
+#[tauri::command]
 fn create_desktop_entry(game: Game, profile: GameProfile, state: State<'_, Arc<ProfileManager>>) -> Result<String, String> {
     let env_vars = state.build_env_vars(&profile);
     let wrappers = state.build_wrapper_cmd(&profile);
@@ -265,6 +280,9 @@ pub fn run() {
             enable_monitor,
             set_game_monitor_rule,
             get_monitor_configs,
+            // Game data paths (PCGamingWiki)
+            get_game_data_paths,
+            open_game_path,
             // System info
             get_hostname,
             create_desktop_entry,

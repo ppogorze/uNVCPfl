@@ -321,6 +321,172 @@ function ScreenConfigSection({
     );
 }
 
+// Game Data Paths Section Component (PCGamingWiki)
+function GameDataSection({
+    steamAppid
+}: {
+    steamAppid: number | null;
+}) {
+    const [data, setData] = useState<{
+        game_name: string;
+        config_paths: { platform: string; raw_path: string; resolved_path: string; exists: boolean }[];
+        save_paths: { platform: string; raw_path: string; resolved_path: string; exists: boolean }[];
+        error: string | null;
+    } | null>(null);
+    const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        if (steamAppid) {
+            setLoading(true);
+            import("@/lib/api").then(api => {
+                api.getGameDataPaths(steamAppid).then(paths => {
+                    setData(paths);
+                    setLoading(false);
+                }).catch(() => {
+                    setLoading(false);
+                });
+            });
+        } else {
+            setData(null);
+        }
+    }, [steamAppid]);
+
+    const handleOpen = async (path: string, inEditor: boolean) => {
+        const api = await import("@/lib/api");
+        try {
+            await api.openGamePath(path, inEditor);
+        } catch (e) {
+            console.error("Failed to open path:", e);
+        }
+    };
+
+    if (!steamAppid) {
+        return (
+            <div className="text-sm text-muted-foreground">
+                Select a Steam game to view data locations.
+            </div>
+        );
+    }
+
+    if (loading) {
+        return (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                <span>Loading from PCGamingWiki...</span>
+            </div>
+        );
+    }
+
+    if (data?.error) {
+        return (
+            <div className="flex items-center gap-2 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-200 text-sm">
+                <span className="text-lg">❌</span>
+                <div>
+                    <span className="font-medium">Error</span>
+                    <p className="text-xs text-red-200/70 mt-0.5">{data.error}</p>
+                </div>
+            </div>
+        );
+    }
+
+    if (!data || (data.config_paths.length === 0 && data.save_paths.length === 0)) {
+        return (
+            <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-200 text-sm">
+                <span className="text-lg">⚠️</span>
+                <div>
+                    <span className="font-medium">No data found</span>
+                    <p className="text-xs text-amber-200/70 mt-0.5">
+                        PCGamingWiki doesn't have path information for this game.
+                    </p>
+                </div>
+            </div>
+        );
+    }
+
+    const PathItem = ({ path, type }: { path: typeof data.config_paths[0]; type: "config" | "save" }) => (
+        <div className="bg-muted/30 rounded-lg p-3 space-y-2">
+            <div className="flex items-start justify-between gap-2">
+                <code className="text-xs font-mono text-muted-foreground break-all flex-1">
+                    {path.resolved_path}
+                </code>
+                <div className="flex items-center gap-1 shrink-0">
+                    {path.exists ? (
+                        <span className="text-green-400 text-sm">✅</span>
+                    ) : (
+                        <span className="text-red-400 text-sm">❌</span>
+                    )}
+                </div>
+            </div>
+            <div className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">
+                    {path.exists ? "Found" : "Not found"}
+                </span>
+                {path.exists && (
+                    <div className="flex gap-1">
+                        {type === "config" && (
+                            <button
+                                onClick={() => handleOpen(path.resolved_path, true)}
+                                className="px-2 py-1 text-xs bg-primary/20 hover:bg-primary/30 text-primary rounded transition-colors"
+                            >
+                                Open in Editor
+                            </button>
+                        )}
+                        <button
+                            onClick={() => handleOpen(path.resolved_path, false)}
+                            className="px-2 py-1 text-xs bg-muted hover:bg-muted/80 rounded transition-colors"
+                        >
+                            Open Folder
+                        </button>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+
+    return (
+        <div className="space-y-4">
+            {/* PCGamingWiki Attribution */}
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span>📚</span>
+                <span>Data from <a href={`https://www.pcgamingwiki.com/wiki/${encodeURIComponent(data.game_name)}`} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">PCGamingWiki</a></span>
+            </div>
+
+            {/* Configuration Paths */}
+            {data.config_paths.length > 0 && (
+                <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                        <span>⚙️</span>
+                        <span className="text-sm font-medium">Configuration</span>
+                    </div>
+                    {data.config_paths.map((path, i) => (
+                        <PathItem key={i} path={path} type="config" />
+                    ))}
+                </div>
+            )}
+
+            {/* Save Paths */}
+            {data.save_paths.length > 0 && (
+                <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                        <span>💾</span>
+                        <span className="text-sm font-medium">Save Games</span>
+                    </div>
+                    {data.save_paths.map((path, i) => (
+                        <PathItem key={i} path={path} type="save" />
+                    ))}
+                </div>
+            )}
+
+            {/* Help text */}
+            {(data.config_paths.some(p => !p.exists) || data.save_paths.some(p => !p.exists)) && (
+                <div className="text-xs text-muted-foreground p-2 bg-muted/20 rounded">
+                    💡 Paths marked "Not found" may appear after running the game at least once.
+                </div>
+            )}
+        </div>
+    );
+}
+
 // Launch Preview Component
 function LaunchPreview({ profile, isSteamGame }: { profile: GameProfile; isSteamGame: boolean }) {
     const [envVars, setEnvVars] = useState<Record<string, string>>({});
@@ -560,6 +726,13 @@ export function MainPanel({ selectedGame, onProfileSaved }: MainPanelProps) {
                     <SettingsSection title="Screen Configuration" icon={<Monitor className="w-4 h-4" />}>
                         <ScreenConfigSection profile={profile} setProfile={setProfile} setHasChanges={setHasChanges} />
                     </SettingsSection>
+
+                    {/* Game Data Paths (PCGamingWiki) - Only for Steam games */}
+                    {selectedGame?.source === "Steam" && selectedGame.id && (
+                        <SettingsSection title="Game Data" icon={<span className="text-sm">📁</span>}>
+                            <GameDataSection steamAppid={parseInt(selectedGame.id)} />
+                        </SettingsSection>
+                    )}
 
                     {/* NVIDIA GPU Settings */}
                     <SettingsSection title="NVIDIA GPU" icon={<Zap className="w-4 h-4" />}>
